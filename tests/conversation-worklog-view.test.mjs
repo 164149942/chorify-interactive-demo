@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+
+const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 let renderConversationWorklog;
 let createTaskPreparationTimerRegistry;
@@ -102,13 +105,13 @@ const records = {
   ],
 };
 
-test("renders all ten nodes and keeps simultaneous active semantics visible", () => {
+test("keeps active node status in work cards without rendering a duplicate marketing flow rail", () => {
   const html = renderConversationWorklog(fixture(), { records });
-  assert.equal((html.match(/class="worklog-stage /g) ?? []).length, 10);
-  assert.match(html, /01[\s\S]*商品 \/ 素材理解/);
-  assert.match(html, /10[\s\S]*交付与导出/);
-  assert.equal((html.match(/worklog-stage is-running/g) ?? []).length, 3);
-  assert.equal((html.match(/worklog-stage is-needs_action/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /class="worklog-stages"/);
+  assert.doesNotMatch(html, /营销 Flow/);
+  assert.match(html, /商品理解已完成/);
+  assert.match(html, /正在生成脚本 3\/5/);
+  assert.match(html, /1 条视频待人工审核/);
 });
 
 test("folds completed node events while expanding running progress", () => {
@@ -175,13 +178,13 @@ test("summarizes pending work in priority order and opens the first item", () =>
   assert.match(html, /data-action="open-pending-action" data-pending-type="blocked" data-item-id="video-blocked"/);
 });
 
-test("keeps queued nodes in the stage rail but out of the timeline", () => {
+test("keeps queued nodes out of the conversation and work-card area", () => {
   const view = fixture({
     timeline: fixture().timeline.filter((item) => item.nodeKey !== "storyboard"),
   });
   const html = renderConversationWorklog(view, { records });
-  assert.match(html, /worklog-stage is-queued[\s\S]*修改与版本/);
   assert.doesNotMatch(html, /class="worklog-event is-queued"/);
+  assert.doesNotMatch(html, /修改与版本/);
 });
 
 test("keeps preparation timers isolated by task id", () => {
@@ -217,7 +220,7 @@ test("keeps preparation timers isolated by task id", () => {
   assert.deepEqual(cleared, [1, 2]);
 });
 
-test("captures and restores AI draft focus timeline scroll and manual detail state", () => {
+test("captures and restores AI draft focus card-area scroll and manual detail state", () => {
   assert.equal(typeof captureWorklogTransientState, "function");
   assert.equal(typeof restoreWorklogTransientState, "function");
   const beforeInput = {
@@ -337,12 +340,22 @@ test("keeps delivery actions outside a collapsed completed review event and show
   assert.match(exportedHtml, /可交付 0 条 · 已导出 1 条/);
 });
 
-test("routes active worklog nodes without opening queued stages and exposes accessible progress", () => {
+test("keeps active worklog progress accessible without a duplicate stage rail", () => {
   const html = renderConversationWorklog(fixture(), { records });
-  assert.match(html, /class="worklog-stage is-queued"[^>]*disabled/);
-  assert.match(html, /data-action="open-worklog-node" data-node-id="node-generation"/);
+  assert.doesNotMatch(html, /class="worklog-stage/);
   assert.match(html, /role="progressbar"[^>]*aria-valuenow="3"[^>]*aria-valuemax="5"/);
   assert.match(html, /class="worklog-timeline" role="log" aria-live="polite"/);
+});
+
+test("allocates the right panel free height to the scrollable conversation and work-card area", () => {
+  const aiPanelRules = [...styles.matchAll(/\.ai-panel\s*\{([\s\S]*?)\}/g)].map((match) => match[1]);
+  const timelineRule = styles.match(/\.worklog-timeline\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  const timelineChildRule = styles.match(/\.worklog-timeline\s*>\s*\*\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  assert.equal(aiPanelRules.some((rule) => /grid-template-rows:\s*52px auto minmax\(0, 1fr\) auto auto;/.test(rule)), true);
+  assert.match(timelineRule, /overflow-y:\s*auto;/);
+  assert.match(timelineRule, /overscroll-behavior:\s*contain;/);
+  assert.match(timelineRule, /scrollbar-gutter:\s*stable;/);
+  assert.match(timelineChildRule, /flex:\s*0 0 auto;/);
 });
 
 test("renders blockers as expanded timeline events with object context and actions", () => {

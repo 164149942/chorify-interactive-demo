@@ -5,7 +5,15 @@
 - Isolation rule: all v0.3 changes stay in this directory; v0.2 and the single-page public demo remain frozen.
 - Deployment rule: this version is validated locally first and does not update the current Vercel deployment without a separate user confirmation.
 - Scope: Frame-style panel controls, permanent left-two delivery browser, card/list views, compact task overview, single-video package placeholder shell, blank-project auto-open and right-panel result linking.
-- Preserved behavior: ten-node worklog, session isolation, five parallel video chains, per-storyboard approval, mandatory human review and the user-menu placeholder.
+- Preserved behavior: ten-node task model, session isolation, five parallel video chains, per-storyboard approval, mandatory human review and the user-menu placeholder.
+
+## Current Iteration — 2026-07-16
+
+- Removed the duplicate `营销 Flow / 十节点轨道` from the top of the right AI panel.
+- Did not add a separate right-side timeline component.
+- The existing conversation and work-card area now owns the remaining panel height and scrolls vertically without shrinking its cards.
+- AI identity, current context, pending-action bar and composer remain fixed outside the scrolling area.
+- Verified the right panel at 1920×1080 and 1366×768; the compact viewport produced a real scroll range and wheel input changed the content scroll position while the pending bar and composer stayed fixed.
 
 ## Frozen v0.2 SHA-256
 

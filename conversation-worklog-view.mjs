@@ -130,20 +130,6 @@ function renderProgress(progress) {
   return `<div class="worklog-progress" role="progressbar" aria-label="节点进度" aria-valuenow="${current}" aria-valuemin="0" aria-valuemax="${progress.total}"><span style="width:${percent}%"></span></div><span class="worklog-progress-label">${current}/${progress.total}</span>`;
 }
 
-function renderStageRail(nodes) {
-  return `
-    <section class="worklog-stages" aria-label="营销任务十节点进度">
-      <div class="worklog-stages-heading"><span>营销 Flow</span><strong>从理解到交付</strong></div>
-      <div class="worklog-stage-track">
-        ${nodes.map((node, index) => {
-          const tone = semantic(node.semantic);
-          const unavailable = ["queued", "skipped"].includes(tone);
-          return `<button class="worklog-stage is-${tone}" data-action="open-worklog-node" data-node-id="${escapeHtml(node.id)}" title="${escapeHtml(node.title)} · ${semanticLabels[tone]}" aria-label="节点 ${pad(node.index ?? index + 1)}：${escapeHtml(node.title)}，${semanticLabels[tone]}"${unavailable ? " disabled aria-disabled=\"true\"" : ""}><span>${tone === "completed" ? "✓" : pad(node.index ?? index + 1)}</span><b>${escapeHtml(node.shortTitle ?? node.title)}</b><i>${escapeHtml(semanticLabels[tone])}</i></button>`;
-        }).join("")}
-      </div>
-    </section>`;
-}
-
 function nodePrimaryAction(node) {
   if (!node) return "";
   const labels = {
@@ -379,7 +365,6 @@ export function renderConversationWorklog(viewModel, options = {}) {
   );
   return `
     <div class="worklog-context"><span>当前上下文</span><div><b>${escapeHtml(projectName)}</b><i>›</i><b>${escapeHtml(sessionTitle)}</b><i>›</i><strong>${escapeHtml(objectTitle)}</strong></div></div>
-    ${renderStageRail(viewModel.nodes ?? [])}
     ${renderTimeline(viewModel, records, options.productImage ?? "", options.snapshot ?? null, options.currentObject ?? null)}
     ${renderPendingBar(visiblePendingActions)}
     ${renderComposer(options.composerContext ?? `当前任务：${objectTitle}`)}

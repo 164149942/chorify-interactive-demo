@@ -2045,7 +2045,7 @@ small {
 .ai-panel {
   border-left: 3px solid var(--divider-gutter);
   display: grid;
-  grid-template-rows: 52px auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: 52px auto minmax(0, 1fr) auto auto;
   background: #fff;
   min-width: 0;
 }
@@ -2316,8 +2316,7 @@ small {
   border-bottom: 1px solid var(--line);
 }
 
-.worklog-context > span,
-.worklog-stages-heading > span {
+.worklog-context > span {
   display: block;
   color: var(--muted);
   font-size: 9px;
@@ -2354,130 +2353,21 @@ small {
   font-style: normal;
 }
 
-.worklog-stages {
-  min-width: 0;
-  padding: 8px 8px 9px;
-  border-bottom: 1px solid var(--line);
-  background: #fff;
-}
-
-.worklog-stages-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 2px 6px;
-}
-
-.worklog-stages-heading > strong {
-  color: #454957;
-  font-size: 9px;
-  font-weight: 650;
-}
-
-.worklog-stage-track {
-  min-width: 0;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 67px;
-  gap: 5px;
-  overflow-x: auto;
-  padding-bottom: 3px;
-  scrollbar-width: thin;
-}
-
-.worklog-stage {
-  min-width: 0;
-  height: 55px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fafafd;
-  padding: 5px 6px;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  grid-template-rows: 1fr auto;
-  gap: 2px 4px;
-  text-align: left;
-}
-
-.worklog-stage > span {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  background: #ececf2;
-  color: #6c7080;
-  display: grid;
-  place-items: center;
-  font-size: 8px;
-  font-weight: 800;
-}
-
-.worklog-stage > b {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  align-self: center;
-  color: #343744;
-  font-size: 9px;
-}
-
-.worklog-stage > i {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 8px;
-  font-style: normal;
-}
-
-.worklog-stage.is-running,
-.worklog-stage.is-needs_action {
-  border-color: #cfc8ff;
-  background: #f7f5ff;
-}
-
-.worklog-stage.is-running > span {
-  background: var(--purple);
-  color: #fff;
-}
-
-.worklog-stage.is-needs_action > span {
-  background: #fff0cd;
-  color: #a66c00;
-}
-
-.worklog-stage.is-blocked {
-  border-color: #f0b7b5;
-  background: #fff7f7;
-}
-
-.worklog-stage.is-blocked > span {
-  background: #ffe0df;
-  color: #b53b37;
-}
-
-.worklog-stage.is-completed > span {
-  background: #dff5e8;
-  color: #218654;
-}
-
-.worklog-stage.is-queued,
-.worklog-stage.is-skipped {
-  opacity: 0.68;
-}
-
-.worklog-stage:disabled {
-  cursor: default;
-}
-
 .worklog-timeline {
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   background: #fbfbfd;
   scrollbar-width: thin;
+}
+
+.worklog-timeline > * {
+  flex: 0 0 auto;
 }
 
 .worklog-event {
@@ -2919,14 +2809,6 @@ small {
 }
 
 @media (max-width: 1365px) {
-  .worklog-stage-track {
-    grid-auto-columns: 62px;
-  }
-
-  .worklog-stage {
-    padding-inline: 5px;
-  }
-
   .worklog-pending > i {
     display: none;
   }
