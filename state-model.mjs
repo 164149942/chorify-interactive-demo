@@ -16,6 +16,9 @@ const seedState = {
     contextSnapshotId: null,
     storyboardId: null,
     videoStage: null,
+    assetCenterScope: "workspace",
+    assetFolderId: null,
+    assetId: "workspace-asset-brand-guide",
   },
   ui: {
     productScreen: "home",
@@ -30,6 +33,9 @@ const seedState = {
     profileMenuOpen: false,
     deliveryViewMode: "grid",
     videoPackageMemory: {},
+    sessionAssetPickerOpen: false,
+    assetPickerScope: "project",
+    selectedLibraryAssetIds: [],
   },
   meta: {
     nextProjectNumber: 1,
@@ -38,6 +44,9 @@ const seedState = {
     nextContextSnapshotNumber: 1,
     nextProductionNumber: 1,
     nextInputAssetNumber: 1,
+    nextWorkspaceFolderNumber: 4,
+    nextWorkspaceAssetNumber: 7,
+    nextProjectAssetReferenceNumber: 7,
   },
   composer: {
     prefill: "",
@@ -71,6 +80,108 @@ const seedState = {
   },
   contextSnapshots: {},
   inputAssets: {},
+  workspaceFolders: {
+    "workspace-folder-blender": {
+      id: "workspace-folder-blender",
+      name: "便携榨汁杯",
+      parentId: null,
+      assetIds: ["workspace-asset-brand-guide", "workspace-asset-product-images", "workspace-asset-product-page"],
+    },
+    "workspace-folder-launch": {
+      id: "workspace-folder-launch",
+      name: "2026 新品",
+      parentId: null,
+      assetIds: ["workspace-asset-reference-videos", "workspace-asset-feedback"],
+    },
+    "workspace-folder-brand": {
+      id: "workspace-folder-brand",
+      name: "公共品牌资料",
+      parentId: null,
+      assetIds: ["workspace-asset-logo-pack"],
+    },
+  },
+  workspaceAssets: {
+    "workspace-asset-brand-guide": {
+      id: "workspace-asset-brand-guide",
+      name: "品牌视觉与用语规范.pdf",
+      type: "pdf",
+      folderId: "workspace-folder-blender",
+      storageScope: "workspace",
+      version: "V3",
+      aiStatus: "understood",
+      previewLabel: "PDF",
+      summary: "品牌色、Logo 安全区、禁用表达与产品适用范围。",
+      updatedAt: "2026-07-12",
+    },
+    "workspace-asset-product-images": {
+      id: "workspace-asset-product-images",
+      name: "便携榨汁杯官方产品图",
+      type: "image-set",
+      folderId: "workspace-folder-blender",
+      storageScope: "workspace",
+      version: "V2",
+      aiStatus: "not_understood",
+      previewLabel: "IMG ×12",
+      summary: "十二张白底与场景产品图。",
+      updatedAt: "2026-07-10",
+    },
+    "workspace-asset-product-page": {
+      id: "workspace-asset-product-page",
+      name: "商品详情页链接",
+      type: "url",
+      folderId: "workspace-folder-blender",
+      storageScope: "workspace",
+      version: "V1",
+      aiStatus: "understood",
+      previewLabel: "URL",
+      summary: "商品参数、定价和核心卖点页面。",
+      updatedAt: "2026-07-09",
+    },
+    "workspace-asset-reference-videos": {
+      id: "workspace-asset-reference-videos",
+      name: "TikTok 竞品参考视频",
+      type: "video-set",
+      folderId: "workspace-folder-launch",
+      storageScope: "workspace",
+      version: "V1",
+      aiStatus: "not_understood",
+      previewLabel: "MP4 ×8",
+      summary: "八条同品类场景与 Hook 参考。",
+      updatedAt: "2026-07-08",
+    },
+    "workspace-asset-feedback": {
+      id: "workspace-asset-feedback",
+      name: "用户反馈汇总.xlsx",
+      type: "sheet",
+      folderId: "workspace-folder-launch",
+      storageScope: "workspace",
+      version: "V4",
+      aiStatus: "understood",
+      previewLabel: "XLS",
+      summary: "历史用户评价、常见问题和使用场景。",
+      updatedAt: "2026-07-13",
+    },
+    "workspace-asset-logo-pack": {
+      id: "workspace-asset-logo-pack",
+      name: "Chorify Logo 素材包",
+      type: "archive",
+      folderId: "workspace-folder-brand",
+      storageScope: "workspace",
+      version: "V1",
+      aiStatus: "not_understood",
+      previewLabel: "ZIP",
+      summary: "深浅色 Logo、图标与导出规范。",
+      updatedAt: "2026-07-06",
+    },
+  },
+  projectAssetReferences: {
+    "project-asset-reference-1": { id: "project-asset-reference-1", projectId: "proj-blender", assetId: "workspace-asset-brand-guide", version: "V3", origin: "workspace" },
+    "project-asset-reference-2": { id: "project-asset-reference-2", projectId: "proj-blender", assetId: "workspace-asset-product-images", version: "V2", origin: "workspace" },
+    "project-asset-reference-3": { id: "project-asset-reference-3", projectId: "proj-blender", assetId: "workspace-asset-reference-videos", version: "V1", origin: "workspace" },
+    "project-asset-reference-4": { id: "project-asset-reference-4", projectId: "proj-earbuds", assetId: "workspace-asset-brand-guide", version: "V3", origin: "workspace" },
+    "project-asset-reference-5": { id: "project-asset-reference-5", projectId: "proj-skincare", assetId: "workspace-asset-feedback", version: "V4", origin: "workspace" },
+    "project-asset-reference-6": { id: "project-asset-reference-6", projectId: "proj-skincare", assetId: "workspace-asset-logo-pack", version: "V1", origin: "workspace" },
+  },
   storyboards: {
     "storyboard-blender-1": {
       id: "storyboard-blender-1",
@@ -172,6 +283,7 @@ const seedState = {
         products: ["product-blender"],
         artifacts: ["artifact-blender-1", "artifact-blender-2"],
       },
+      assetReferenceIds: ["project-asset-reference-1", "project-asset-reference-2", "project-asset-reference-3"],
       sessionIds: ["sess-blender-july", "sess-blender-ugc"],
     },
     "proj-earbuds": {
@@ -182,6 +294,7 @@ const seedState = {
         products: ["product-earbuds"],
         artifacts: [],
       },
+      assetReferenceIds: ["project-asset-reference-4"],
       sessionIds: ["sess-earbuds-noise"],
     },
     "proj-skincare": {
@@ -192,6 +305,7 @@ const seedState = {
         products: ["product-serum"],
         artifacts: ["artifact-serum-1"],
       },
+      assetReferenceIds: ["project-asset-reference-5", "project-asset-reference-6"],
       sessionIds: ["sess-skincare-seeding"],
     },
   },
@@ -201,6 +315,7 @@ const seedState = {
       projectId: "proj-blender",
       title: "7 月新品首批视频",
       taskIds: ["task-blender-batch"],
+      contextAssetIds: ["workspace-asset-brand-guide", "workspace-asset-product-images"],
       userPrompt: "帮我为这款便携式榨汁杯生成 5 条 TikTok 普通营销视频，面向美国大学生和通勤白领。",
     },
     "sess-blender-ugc": {
@@ -208,6 +323,7 @@ const seedState = {
       projectId: "proj-blender",
       title: "UGC 风格补充生成",
       taskIds: ["task-blender-ugc"],
+      contextAssetIds: ["workspace-asset-reference-videos"],
       userPrompt: "把已生成的视频改得更像真实用户随手拍，不要太广告。",
     },
     "sess-earbuds-noise": {
@@ -215,6 +331,7 @@ const seedState = {
       projectId: "proj-earbuds",
       title: "降噪卖点首批视频",
       taskIds: ["task-earbuds-batch"],
+      contextAssetIds: [],
       userPrompt: "为这款降噪耳机做一批对比型 TikTok 视频，突出通勤和学习场景。",
     },
     "sess-skincare-seeding": {
@@ -222,6 +339,7 @@ const seedState = {
       projectId: "proj-skincare",
       title: "精华液种草脚本",
       taskIds: ["task-skincare-export"],
+      contextAssetIds: ["workspace-asset-feedback"],
       userPrompt: "给这款烟酰胺精华做 3 条种草视频。",
     },
   },
@@ -731,22 +849,36 @@ function ensureV02Collections(state) {
   state.active.contextSnapshotId ??= null;
   state.active.storyboardId ??= null;
   state.active.videoStage ??= null;
+  state.active.assetCenterScope ??= "workspace";
+  state.active.assetFolderId ??= null;
+  state.active.assetId ??= null;
   state.ui.chiefTransferOpen ??= false;
   state.ui.deliveryViewMode ??= "grid";
   state.ui.videoPackageMemory ??= {};
+  state.ui.sessionAssetPickerOpen ??= false;
+  state.ui.assetPickerScope ??= "project";
+  state.ui.selectedLibraryAssetIds ??= [];
   state.meta.nextChiefChatNumber ??= 1;
   state.meta.nextChiefMessageNumber ??= 1;
   state.meta.nextContextSnapshotNumber ??= 1;
   state.meta.nextProductionNumber ??= 1;
   state.meta.nextInputAssetNumber ??= 1;
+  state.meta.nextWorkspaceFolderNumber ??= 1;
+  state.meta.nextWorkspaceAssetNumber ??= 1;
+  state.meta.nextProjectAssetReferenceNumber ??= 1;
   state.chiefChats ??= {};
   state.chiefMessages ??= {};
   state.contextSnapshots ??= {};
   state.inputAssets ??= {};
+  state.workspaceFolders ??= {};
+  state.workspaceAssets ??= {};
+  state.projectAssetReferences ??= {};
   state.storyboards ??= {};
   state.videos ??= {};
   state.artifacts ??= {};
   state.conversationTimelines ??= {};
+  for (const project of Object.values(state.projects ?? {})) project.assetReferenceIds ??= [];
+  for (const session of Object.values(state.sessions ?? {})) session.contextAssetIds ??= [];
   for (const artifact of Object.values(state.artifacts)) {
     const video = state.videos[artifact.videoId];
     if (!video) continue;
@@ -940,6 +1072,7 @@ function createProjectSession(state, { projectId, sessionTitle, prompt, taskName
     userPrompt: asTrimmedText(prompt, "请先理解商品与营销目标，并规划五条营销视频。"),
     contextSnapshotIds: [...contextSnapshotIds],
     assetIds: [],
+    contextAssetIds: [],
   };
   state.projects[projectId].sessionIds.push(sessionId);
   const taskId = createProductionTask(state, { projectId, sessionId, taskName, prompt });
@@ -1244,6 +1377,7 @@ export function transferChiefChatToNewProject(state, input = {}) {
     updatedAt: "刚刚",
     brandId: input.brandId ?? null,
     assetIds: { products: [], artifacts: [] },
+    assetReferenceIds: [],
     sessionIds: [],
   };
   const snapshotId = createContextSnapshot(next, chat, input);
@@ -1461,6 +1595,195 @@ export function promoteAssetScope(state, assetId, scope) {
     const project = next.projects[asset.projectId];
     asset.brandId = asset.brandId ?? project?.brandId ?? `brand-${asset.projectId}`;
   }
+  return next;
+}
+
+export function getWorkspaceFolders(state) {
+  return clone(Object.values(state.workspaceFolders ?? {}));
+}
+
+export function getWorkspaceAssets(state) {
+  return clone(Object.values(state.workspaceAssets ?? {}).filter((asset) => asset.storageScope === "workspace"));
+}
+
+export function getProjectAssetReferences(state, projectId = state.active.projectId) {
+  const project = state.projects?.[projectId];
+  if (!project) return [];
+  return clone((project.assetReferenceIds ?? []).map((id) => state.projectAssetReferences?.[id]).filter(Boolean));
+}
+
+export function getProjectLibraryAssets(state, projectId = state.active.projectId) {
+  return getProjectAssetReferences(state, projectId)
+    .map((reference) => ({ ...reference, asset: clone(state.workspaceAssets?.[reference.assetId] ?? null) }))
+    .filter((reference) => reference.asset);
+}
+
+export function getSessionContextAssets(state, sessionId = state.active.sessionId) {
+  const session = state.sessions?.[sessionId];
+  if (!session) return [];
+  return clone((session.contextAssetIds ?? []).map((id) => state.workspaceAssets?.[id]).filter(Boolean));
+}
+
+function getAssetsForLibraryScope(state, scope) {
+  if (scope === "workspace") return getWorkspaceAssets(state);
+  if (scope === "project") return getProjectLibraryAssets(state).map((reference) => reference.asset);
+  if (scope === "session") return getSessionContextAssets(state);
+  throw new Error(`invalid asset center scope: ${scope}`);
+}
+
+export function openAssetCenter(state, scope = "workspace") {
+  const next = clone(state);
+  ensureV02Collections(next);
+  next.active.assetCenterScope = scope;
+  next.active.assetFolderId = null;
+  next.active.assetId = getAssetsForLibraryScope(next, scope)[0]?.id ?? null;
+  next.ui.productScreen = "asset-center";
+  next.ui.projectsDrawerOpen = false;
+  next.ui.sessionAssetPickerOpen = false;
+  return next;
+}
+
+export function setAssetCenterScope(state, scope) {
+  const next = clone(state);
+  ensureV02Collections(next);
+  next.active.assetCenterScope = scope;
+  next.active.assetFolderId = null;
+  next.active.assetId = getAssetsForLibraryScope(next, scope)[0]?.id ?? null;
+  return next;
+}
+
+export function openProjectAssetMode(state) {
+  const next = clone(state);
+  ensureV02Collections(next);
+  requireRecord(next.projects, next.active.projectId, "project");
+  next.ui.productScreen = "workspace";
+  next.ui.deliveryMaximized = false;
+  next.ui.deliveryMaximizeRestore = null;
+  next.ui.projectNavCollapsed = false;
+  next.ui.deliveryBrowserCollapsed = false;
+  next.ui.centralWorkspaceCollapsed = false;
+  next.ui.aiPanelCollapsed = false;
+  next.active.mainView = "project-assets";
+  next.active.assetView = "project";
+  next.active.assetCenterScope = "project";
+  next.active.workspaceMode = "project-assets";
+  next.active.deliveryType = "inputs";
+  next.active.videoId = null;
+  next.active.storyboardId = null;
+  next.active.artifactId = null;
+  next.active.assetId = getProjectLibraryAssets(next)[0]?.assetId ?? null;
+  const selected = next.workspaceAssets[next.active.assetId];
+  next.composer.contextLabel = selected ? `正在查看项目资产：${selected.name}` : "当前项目资产";
+  return next;
+}
+
+export function selectLibraryAsset(state, assetId) {
+  const next = clone(state);
+  ensureV02Collections(next);
+  const asset = requireRecord(next.workspaceAssets, assetId, "library asset");
+  next.active.assetId = asset.id;
+  next.composer.contextLabel = `正在查看资产：${asset.name}`;
+  return next;
+}
+
+export function addWorkspaceAssetToProject(state, assetId, projectId = state.active.projectId) {
+  const next = clone(state);
+  ensureV02Collections(next);
+  const asset = requireRecord(next.workspaceAssets, assetId, "library asset");
+  const project = requireRecord(next.projects, projectId, "project");
+  const existing = (project.assetReferenceIds ?? [])
+    .map((id) => next.projectAssetReferences[id])
+    .find((reference) => reference?.assetId === assetId);
+  if (existing) return next;
+  const number = next.meta.nextProjectAssetReferenceNumber;
+  next.meta.nextProjectAssetReferenceNumber += 1;
+  const id = `project-asset-reference-${number}`;
+  next.projectAssetReferences[id] = {
+    id,
+    projectId: project.id,
+    assetId: asset.id,
+    version: asset.version,
+    origin: asset.storageScope === "workspace" ? "workspace" : "project-upload",
+  };
+  project.assetReferenceIds.push(id);
+  return next;
+}
+
+export function addAssetToSessionContext(state, assetId, sessionId = state.active.sessionId) {
+  const next = clone(state);
+  ensureV02Collections(next);
+  requireRecord(next.workspaceAssets, assetId, "library asset");
+  const session = requireRecord(next.sessions, sessionId, "session");
+  if (!session.contextAssetIds.includes(assetId)) session.contextAssetIds.push(assetId);
+  return next;
+}
+
+export function removeAssetFromSessionContext(state, assetId, sessionId = state.active.sessionId) {
+  const next = clone(state);
+  ensureV02Collections(next);
+  const session = requireRecord(next.sessions, sessionId, "session");
+  session.contextAssetIds = session.contextAssetIds.filter((id) => id !== assetId);
+  return next;
+}
+
+export function createWorkspaceFolder(state, name, parentId = null) {
+  const folderName = asTrimmedText(name);
+  if (!folderName) throw new Error("folder name is required");
+  const next = clone(state);
+  ensureV02Collections(next);
+  if (parentId) requireRecord(next.workspaceFolders, parentId, "workspace folder");
+  const number = next.meta.nextWorkspaceFolderNumber;
+  next.meta.nextWorkspaceFolderNumber += 1;
+  const id = `workspace-folder-${number}`;
+  next.workspaceFolders[id] = { id, name: folderName, parentId, assetIds: [] };
+  next.active.assetFolderId = parentId;
+  return next;
+}
+
+export function uploadDemoAsset(state, { name, type = "file", scope = "workspace", folderId = null, projectId = state.active.projectId } = {}) {
+  const assetName = asTrimmedText(name);
+  if (!assetName) throw new Error("asset name is required");
+  if (!['workspace', 'project'].includes(scope)) throw new Error(`invalid upload scope: ${scope}`);
+  const next = clone(state);
+  ensureV02Collections(next);
+  if (folderId) requireRecord(next.workspaceFolders, folderId, "workspace folder");
+  if (scope === "project") requireRecord(next.projects, projectId, "project");
+  const number = next.meta.nextWorkspaceAssetNumber;
+  next.meta.nextWorkspaceAssetNumber += 1;
+  const id = `workspace-asset-${number}`;
+  next.workspaceAssets[id] = {
+    id,
+    name: assetName,
+    type,
+    folderId: scope === "workspace" ? folderId : null,
+    storageScope: scope,
+    projectId: scope === "project" ? projectId : null,
+    version: "V1",
+    aiStatus: "not_understood",
+    previewLabel: type.toUpperCase(),
+    summary: "演示上传资产，尚未让 AI 理解。",
+    updatedAt: "刚刚",
+  };
+  if (scope === "workspace" && folderId) next.workspaceFolders[folderId].assetIds.push(id);
+  if (scope === "project") return addWorkspaceAssetToProject(next, id, projectId);
+  next.active.assetId = id;
+  return next;
+}
+
+export function requestAssetUnderstanding(state, assetIds) {
+  const ids = asStringArray(assetIds);
+  if (!ids.length) throw new Error("asset ids are required");
+  const next = clone(state);
+  ensureV02Collections(next);
+  for (const id of ids) requireRecord(next.workspaceAssets, id, "library asset").aiStatus = "understanding";
+  return next;
+}
+
+export function toggleSessionAssetPicker(state, forceOpen = null, scope = "project") {
+  const next = clone(state);
+  ensureV02Collections(next);
+  next.ui.sessionAssetPickerOpen = forceOpen === null ? !next.ui.sessionAssetPickerOpen : forceOpen;
+  if (next.ui.sessionAssetPickerOpen) next.ui.assetPickerScope = ["project", "workspace"].includes(scope) ? scope : "project";
   return next;
 }
 
@@ -1861,6 +2184,8 @@ export function openProjectsHome(state) {
   const next = clone(state);
   next.ui.productScreen = "home";
   next.ui.projectsDrawerOpen = false;
+  next.ui.sessionAssetPickerOpen = false;
+  next.ui.selectedLibraryAssetIds = [];
   return next;
 }
 
@@ -1875,8 +2200,9 @@ export function cancelCreateProject(state) {
   return openProjectsHome(state);
 }
 
-export function createBlankProject(state, { name, description = "" } = {}) {
-  const next = clone(state);
+export function createBlankProject(state, { name, description = "", workspaceAssetIds = [] } = {}) {
+  let next = clone(state);
+  ensureV02Collections(next);
   const projectNumber = next.meta.nextProjectNumber;
   const projectId = `proj-created-${projectNumber}`;
   const projectName = name?.trim() || `未命名营销项目 ${projectNumber}`;
@@ -1893,8 +2219,13 @@ export function createBlankProject(state, { name, description = "" } = {}) {
       products: [],
       artifacts: [],
     },
+    assetReferenceIds: [],
     sessionIds: [],
   };
+
+  for (const assetId of [...new Set(asStringArray(workspaceAssetIds))]) {
+    next = addWorkspaceAssetToProject(next, assetId, projectId);
+  }
 
   return selectProject(next, projectId);
 }
@@ -2211,6 +2542,7 @@ export function getConversationItems(state) {
 
 export function selectProject(state, projectId) {
   const next = clone(state);
+  ensureV02Collections(next);
   const project = next.projects[projectId];
   const sessionId = project.sessionIds[0] ?? null;
   const taskId = sessionId ? firstTaskIdForSession(next, sessionId) : null;
@@ -2234,6 +2566,8 @@ export function selectProject(state, projectId) {
   next.ui.productScreen = "workspace";
   next.ui.deliveryMaximized = false;
   next.ui.deliveryMaximizeRestore = null;
+  next.ui.sessionAssetPickerOpen = false;
+  next.ui.selectedLibraryAssetIds = [];
   next.composer.prefill = "";
   next.composer.contextLabel = taskId ? `当前任务：${next.tasks[taskId].name}` : `当前项目：${project.name}`;
   return next;
@@ -2241,6 +2575,7 @@ export function selectProject(state, projectId) {
 
 export function selectSession(state, sessionId) {
   const next = clone(state);
+  ensureV02Collections(next);
   const session = requireRecord(next.sessions, sessionId, "session");
   const taskId = firstTaskIdForSession(next, sessionId);
   next.active.projectId = session.projectId;
@@ -2254,6 +2589,8 @@ export function selectSession(state, sessionId) {
   next.active.artifactId = null;
   next.active.deliveryType = "overview";
   next.active.workspaceMode = "overview";
+  next.ui.sessionAssetPickerOpen = false;
+  next.ui.selectedLibraryAssetIds = [];
   next.composer.prefill = "";
   next.active.storyboardId = null;
   next.composer.contextLabel = taskId ? `当前任务：${next.tasks[taskId].name}` : `当前会话：${session.title}`;
