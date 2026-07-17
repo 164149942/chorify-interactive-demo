@@ -15,6 +15,17 @@
 - AI identity, current context, pending-action bar and composer remain fixed outside the scrolling area.
 - Verified the right panel at 1920×1080 and 1366×768; the compact viewport produced a real scroll range and wheel input changed the content scroll position while the pending bar and composer stayed fixed.
 
+## Asset Library Workbench — 2026-07-17
+
+- Added a global Asset Center with three viewing scopes: workspace, current project and current session context.
+- The managed stores are workspace assets and project asset references; session assets are context references rather than a third library.
+- Added workspace folders in the central browser, flat project/session lists, selected-asset preview, version/source display and manually triggered AI understanding.
+- Added optional workspace-asset references to the new-project dialog.
+- Added Frame-style project asset mode: project navigation remains in left one, project assets occupy left two, the selected asset opens centrally, and the AI panel keeps the current project context.
+- Added the first composer action for choosing project/workspace assets for the current session, with removable context chips.
+- Verified 24 automated test groups, no browser console errors, no document-level overflow, and correct project-asset list scrolling at 1920×1080 and 1366×768.
+- Verification screenshots: `screenshots/v0.3-asset-center-1920x1080.png` and `screenshots/v0.3-project-assets-1366x768.png`.
+
 ## Frozen v0.2 SHA-256
 
 These hashes record the exact v0.2 source used to create v0.3. Any mismatch means the protected v0.2 copy has changed.
@@ -39,4 +50,11 @@ These hashes record the exact v0.2 source used to create v0.3. Any mismatch mean
 - Verified blank project first action opens the central overview, preparation stops at 5/5 storyboard confirmation, and confirming storyboard 01 only generates video 01.
 - Verified right-side storyboard/video cards show `正在查看` when their exact object is open in the central workspace.
 
-Screenshots are stored in `screenshots/`. The current Vercel deployment remains unchanged.
+Screenshots are stored in `screenshots/`.
+
+## Production Deployment — 2026-07-17
+
+- Production alias: `https://chorify-marketing-demo.vercel.app`
+- Deployment ID: `dpl_CiTJNeQsRdT4oFYox1wjsMKKZoEo`
+- Production state: `READY`
+- Public browser verification: title, Asset Center, six workspace asset cards and selected-asset detail rendered; no console errors or framework error overlays.

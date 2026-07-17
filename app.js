@@ -20,6 +20,11 @@ import {
   getConversationViewModel,
   getCurrentTaskProcessNodes,
   getProjectInputAssets,
+  getWorkspaceAssets,
+  getWorkspaceFolders,
+  getProjectAssetReferences,
+  getProjectLibraryAssets,
+  getSessionContextAssets,
   getProjectSessions,
   getTaskStoryboards,
   getTaskVideoProductionChains,
@@ -29,6 +34,17 @@ import {
   openChiefTransfer,
   openCreateProject,
   openProjectsHome,
+  openAssetCenter,
+  setAssetCenterScope,
+  openProjectAssetMode,
+  selectLibraryAsset,
+  addWorkspaceAssetToProject,
+  addAssetToSessionContext,
+  removeAssetFromSessionContext,
+  createWorkspaceFolder,
+  uploadDemoAsset,
+  requestAssetUnderstanding,
+  toggleSessionAssetPicker,
   promoteAssetScope,
   requestStoryboardRevision,
   reviewVideo,
@@ -48,6 +64,13 @@ import {
   transferChiefChatToNewProject,
   transferChiefChatToSession,
 } from "./state-model.mjs";
+import {
+  renderAssetCenterView,
+  renderProjectAssetBrowser,
+  renderAssetPreview,
+  renderSessionAssetPicker,
+  renderSessionContextChips,
+} from "./asset-library-view.mjs";
 import {
   captureWorklogTransientState,
   completeScheduledVideoGeneration,
@@ -163,7 +186,59 @@ function render() {
     return;
   }
 
+  if (state.ui.productScreen === "asset-center") {
+    app.innerHTML = `${renderAssetCenterPage()}${renderNotice()}`;
+    return;
+  }
+
   renderWorkspace();
+}
+
+function currentAssetCenterModel() {
+  const scope = state.active.assetCenterScope ?? "workspace";
+  const workspaceAssets = getWorkspaceAssets(state);
+  const projectReferences = getProjectLibraryAssets(state);
+  const sessionAssets = getSessionContextAssets(state);
+  const assets = scope === "workspace"
+    ? workspaceAssets
+    : scope === "project"
+      ? projectReferences.map((reference) => reference.asset)
+      : sessionAssets;
+  const selectedAsset = state.workspaceAssets?.[state.active.assetId] ?? assets[0] ?? null;
+  const selectedFolder = selectedAsset?.folderId ? state.workspaceFolders?.[selectedAsset.folderId] : null;
+  return {
+    scope,
+    folders: scope === "workspace" ? getWorkspaceFolders(state) : [],
+    assets,
+    selectedAssetId: selectedAsset?.id ?? null,
+    selectedAsset,
+    sourceLabel: selectedAsset
+      ? selectedAsset.storageScope === "workspace"
+        ? `工作空间${selectedFolder ? ` / ${selectedFolder.name}` : ""}`
+        : `项目内上传 / ${getActiveProject(state)?.name ?? "当前项目"}`
+      : "",
+    counts: { workspace: workspaceAssets.length, project: projectReferences.length, session: sessionAssets.length },
+    inProject: projectReferences.some((reference) => reference.assetId === selectedAsset?.id),
+    inSession: sessionAssets.some((asset) => asset.id === selectedAsset?.id),
+  };
+}
+
+function renderAssetCenterPage() {
+  const model = currentAssetCenterModel();
+  return `
+    <div class="chorify-shell asset-center-product-shell">
+      <header class="topbar asset-center-topbar">
+        <button class="topbar-logo home-logo-button" data-action="go-projects-home" aria-label="返回项目首页">C</button>
+        <div class="home-brand"><strong>资产中心</strong><span>工作空间、项目与会话资产</span></div>
+        <div class="global-search">${icon("search", 16)}<span>搜索文件夹与资产</span><kbd>Ctrl K</kbd></div>
+        <div class="topbar-controls"><button class="ghost-button" data-action="go-projects-home">返回项目</button></div>
+      </header>
+      <div class="app-body">
+        ${renderGlobalRail("assets")}
+        ${renderAssetCenterView(model)}
+      </div>
+      ${renderSessionAssetPickerDialog()}
+    </div>`;
 }
 
 function renderNotice() {
@@ -312,6 +387,7 @@ function renderWorkspace() {
   const session = getActiveSession(state);
   const task = getActiveTask(state);
   const isBlankProject = project.kind === "blank" || !session;
+  const assetMode = state.active.workspaceMode === "project-assets";
   const layoutClass = [
     state.ui.projectNavCollapsed ? "project-closed" : "",
     state.ui.deliveryBrowserCollapsed ? "delivery-closed" : "",
@@ -319,6 +395,7 @@ function renderWorkspace() {
     state.ui.aiPanelCollapsed ? "ai-closed" : "",
     state.ui.deliveryMaximized ? "delivery-maximized" : "",
     state.active.workspaceMode === "canvas" ? "canvas-open" : "",
+    assetMode ? "asset-mode" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -346,14 +423,30 @@ function renderWorkspace() {
         ${renderGlobalRail("workspace")}
         <main class="workbench ${layoutClass}">
           ${state.ui.projectNavCollapsed ? "" : isBlankProject ? renderBlankProjectNavigation(project) : renderProjectNavigation(project, session)}
-          ${state.ui.deliveryBrowserCollapsed ? "" : isBlankProject ? renderBlankDeliveryBrowser() : renderDeliveryBrowser(task)}
-          ${state.ui.centralWorkspaceCollapsed ? "" : isBlankProject ? renderBlankCentralWorkspace(project) : renderCentralWorkspace(project, session, task)}
+          ${state.ui.deliveryBrowserCollapsed ? "" : assetMode ? renderProjectAssetsBrowserPanel() : isBlankProject ? renderBlankDeliveryBrowser() : renderDeliveryBrowser(task)}
+          ${state.ui.centralWorkspaceCollapsed ? "" : assetMode ? renderProjectAssetCentral(project) : isBlankProject ? renderBlankCentralWorkspace(project) : renderCentralWorkspace(project, session, task)}
           ${state.ui.aiPanelCollapsed ? "" : isBlankProject ? renderBlankAiPanel(project) : renderAiPanel(project, session, task)}
         </main>
       </div>
     </div>
+    ${renderSessionAssetPickerDialog()}
     ${renderNotice()}
   `;
+}
+
+function renderProjectAssetsBrowserPanel() {
+  return `<aside class="delivery-panel panel-surface project-assets-delivery">${renderProjectAssetBrowser({ assets: getProjectLibraryAssets(state), selectedAssetId: state.active.assetId })}</aside>`;
+}
+
+function renderProjectAssetCentral(project) {
+  const asset = state.workspaceAssets?.[state.active.assetId] ?? null;
+  const reference = getProjectAssetReferences(state, project.id).find((item) => item.assetId === asset?.id);
+  const sessionAssets = getSessionContextAssets(state);
+  return `
+    <section class="central-workspace project-assets">
+      <div class="central-toolbar"><div><span class="eyebrow">PROJECT ASSET MODE</span><strong>${escapeHtml(asset?.name ?? "项目资产")}</strong></div><div class="central-actions"><button class="ghost-button" data-action="select-delivery" data-item-type="overview">返回生产工作台</button><button class="icon-only small-icon">${icon("more", 18)}</button></div></div>
+      <div class="central-content asset-preview-content">${renderAssetPreview({ asset, sourceLabel: reference?.origin === "workspace" ? `工作空间引用 · 固定 ${reference.version}` : "项目内上传", inProject: Boolean(reference), inSession: sessionAssets.some((item) => item.id === asset?.id) })}</div>
+    </section>`;
 }
 
 function renderProjectsHome(showCreateDialog = false) {
@@ -415,6 +508,7 @@ function renderHomeProjectCard(project, index) {
 }
 
 function renderCreateProjectDialog() {
+  const suggestedAssets = getWorkspaceAssets(state).slice(0, 4);
   return `
     <div class="create-project-backdrop" data-action="cancel-create-project" data-backdrop="true">
       <section class="create-project-dialog" role="dialog" aria-modal="true" aria-labelledby="create-project-title">
@@ -423,6 +517,7 @@ function renderCreateProjectDialog() {
         <form id="create-project-form">
           <label><span>项目名称</span><input id="project-name" name="name" required maxlength="32" autocomplete="off" placeholder="例如：夏日气泡水新品上市" /></label>
           <label><span>项目描述 <small>可选</small></span><textarea id="project-description" name="description" rows="3" maxlength="100" placeholder="简单说明这次营销项目的背景"></textarea></label>
+          <fieldset class="create-project-assets"><legend><span>从工作空间添加资产 <small>可选</small></span><em>创建后以引用方式进入项目，不复制文件</em></legend><div>${suggestedAssets.map((asset) => `<label><input type="checkbox" name="workspaceAssetIds" value="${escapeHtml(asset.id)}"><span class="create-asset-mark">${escapeHtml(asset.previewLabel)}</span><span><strong>${escapeHtml(asset.name)}</strong><small>${escapeHtml(asset.version)} · ${asset.aiStatus === "understood" ? "AI 已理解" : "尚未让 AI 理解"}</small></span></label>`).join("")}</div></fieldset>
           <div class="create-project-preview"><span class="preview-cover">C</span><div><strong>空白 AI 营销项目</strong><small>创建后进入四栏工作台，但不会自动生成会话或交付物。</small></div></div>
           <div class="create-project-actions"><button type="button" class="ghost-button" data-action="cancel-create-project">取消</button><button type="submit" class="primary-button">创建并进入项目</button></div>
         </form>
@@ -432,12 +527,13 @@ function renderCreateProjectDialog() {
 }
 
 function renderBlankProjectNavigation(project) {
+  const projectAssetCount = getProjectAssetReferences(state, project.id).length;
   return `
     <aside class="project-panel panel-surface">
       <div class="project-identity"><div class="project-cover blank-cover">${escapeHtml(project.name.slice(0, 1))}</div><div><strong>${escapeHtml(project.name)}</strong><small>空白项目 · 刚刚创建</small></div><button class="icon-only small-icon">${icon("more", 17)}</button></div>
-      <div class="tree-section"><div class="tree-heading"><span>${icon("folder", 17)} 项目空间</span><button>${icon("plus", 15)}</button></div><button class="tree-row selected"><span>${icon("grid", 16)} 项目总览</span><small>⌘1</small></button></div>
+      <div class="tree-section"><div class="tree-heading"><span>${icon("folder", 17)} 项目空间</span><button>${icon("plus", 15)}</button></div><button class="tree-row ${state.active.workspaceMode === "project-assets" ? "" : "selected"}" data-action="select-blank-overview"><span>${icon("grid", 16)} 项目总览</span><small>⌘1</small></button><button class="tree-row ${state.active.workspaceMode === "project-assets" ? "selected" : ""}" data-action="open-project-assets"><span>${icon("folder", 16)} 项目资产</span><small>${projectAssetCount}</small></button></div>
       <div class="tree-section blank-session-section"><div class="tree-label">AI 会话</div><div class="tree-empty-copy"><span>${icon("message", 18)}</span><strong>还没有营销会话</strong><small>描述目标或导入素材后，会原子建立会话、任务与五条故事画板。</small></div><button class="new-session" data-action="start-project-session" data-prompt="为这个项目建立首批五条营销视频，并先理解商品与目标。">${icon("plus", 15)} 新建营销会话</button></div>
-      <div class="tree-section shared-assets"><div class="tree-label">项目共同资产</div><button class="tree-row"><span>${icon("folder", 16)} 品牌与商品资料</span><small>0</small></button><button class="tree-row"><span>${icon("folder", 16)} 参考素材</span><small>0</small></button><button class="tree-row"><span>${icon("film", 16)} 项目成品库</span><small>0</small></button></div>
+      <div class="tree-section shared-assets"><div class="tree-label">项目结果</div><button class="tree-row"><span>${icon("film", 16)} 项目成品库</span><small>0</small></button></div>
     </aside>
   `;
 }
@@ -472,9 +568,9 @@ function renderGlobalRail(active = "") {
       <div class="rail-top">
         <button class="rail-button ${active === "home" ? "active" : ""}" data-action="go-projects-home" title="项目主页">${icon("home")}</button>
         <button class="rail-button chief-rail-button ${active === "chief" ? "active" : ""}" data-action="open-chief-chat" title="营销首席官">${icon("bot")}<span>首席官</span></button>
+        <button class="rail-button ${active === "assets" ? "active" : ""}" data-action="open-asset-center" title="资产中心">${icon("folder")}</button>
         <button class="rail-button" title="搜索">${icon("search")}</button>
         <button class="rail-button" title="通知">${icon("bell")}</button>
-        <button class="rail-button" title="上传">${icon("upload")}</button>
       </div>
       <div class="rail-bottom">
         <button class="rail-button" title="帮助">?</button>
@@ -536,10 +632,9 @@ function renderProjectsDrawer(activeProject) {
 
 function renderProjectNavigation(project, session) {
   const sessions = getProjectSessions(state, project.id);
-  const assets = getProjectInputAssets(state, project.id);
-  const brandCount = assets.filter((asset) => asset.scope === "brand").length;
-  const projectCount = assets.filter((asset) => asset.scope === "project").length;
-  const sessionCount = assets.filter((asset) => asset.scope === "session" && asset.sessionId === session.id).length;
+  const projectCount = getProjectAssetReferences(state, project.id).length;
+  const sessionCount = getSessionContextAssets(state, session.id).length;
+  const assetMode = state.active.workspaceMode === "project-assets";
   return `
     <aside class="project-panel panel-surface">
       <div class="project-identity">
@@ -550,7 +645,7 @@ function renderProjectNavigation(project, session) {
 
       <div class="tree-section">
         <div class="tree-heading"><span>${icon("folder", 17)} 项目空间</span><button>${icon("plus", 15)}</button></div>
-        <button class="tree-row selected" data-action="select-delivery" data-item-type="overview">
+        <button class="tree-row ${assetMode ? "" : "selected"}" data-action="select-delivery" data-item-type="overview">
           <span>${icon("grid", 16)} 项目总览</span><small>⌘1</small>
         </button>
       </div>
@@ -575,9 +670,8 @@ function renderProjectNavigation(project, session) {
 
       <div class="tree-section shared-assets">
         <div class="tree-label">项目共同资产</div>
-        <button class="tree-row" data-action="select-delivery" data-item-type="inputs"><span>${icon("folder", 16)} 品牌资产</span><small>${brandCount}</small></button>
-        <button class="tree-row" data-action="select-delivery" data-item-type="inputs"><span>${icon("folder", 16)} 项目资产</span><small>${projectCount}</small></button>
-        <button class="tree-row" data-action="select-delivery" data-item-type="inputs"><span>${icon("message", 16)} 本会话素材</span><small>${sessionCount}</small></button>
+        <button class="tree-row ${assetMode ? "selected" : ""}" data-action="open-project-assets"><span>${icon("folder", 16)} 项目资产</span><small>${projectCount}</small></button>
+        <button class="tree-row" data-action="open-session-asset-picker"><span>${icon("message", 16)} 本会话素材</span><small>${sessionCount}</small></button>
         <button class="tree-row"><span>${icon("film", 16)} 项目成品库</span><small>${project.assetIds?.artifacts?.length ?? 0}</small></button>
       </div>
     </aside>
@@ -1109,6 +1203,7 @@ function renderAiPanel(project, session, task) {
     storyboards: getTaskStoryboards(state, task.id),
     videos: task.videoIds.map((id) => state.videos[id]).filter(Boolean),
   };
+  const sessionContextAssets = getSessionContextAssets(state, session.id);
   return `
     <aside class="ai-panel panel-surface">
       <div class="ai-head">
@@ -1128,9 +1223,24 @@ function renderAiPanel(project, session, task) {
           storyboardId: state.active.storyboardId,
           stage: state.active.videoStage,
         },
+        sessionAssetsHtml: renderSessionContextChips(sessionContextAssets),
       })}
     </aside>
   `;
+}
+
+function renderSessionAssetPickerDialog() {
+  if (!state.ui.sessionAssetPickerOpen || !state.active.sessionId) return "";
+  const scope = state.ui.assetPickerScope ?? "project";
+  const assets = scope === "workspace"
+    ? getWorkspaceAssets(state)
+    : getProjectLibraryAssets(state).map((reference) => reference.asset);
+  return renderSessionAssetPicker({
+    open: true,
+    scope,
+    assets,
+    selectedIds: getSessionContextAssets(state).map((asset) => asset.id),
+  });
 }
 
 function submitAiMessage(text) {
@@ -1256,6 +1366,55 @@ function handleClick(event) {
   notice = "";
 
   if (action === "go-projects-home") state = openProjectsHome(state);
+  if (action === "open-asset-center") state = openAssetCenter(state, "workspace");
+  if (action === "set-asset-scope") state = setAssetCenterScope(state, target.dataset.scope);
+  if (action === "open-project-assets") state = openProjectAssetMode(state);
+  if (action === "select-blank-overview") {
+    state = selectProject(state, state.active.projectId);
+    state = toggleWorkspacePanel(state, "workspace", false);
+  }
+  if (action === "select-library-asset") state = selectLibraryAsset(state, target.dataset.assetId);
+  if (action === "open-add-project-assets") state = openAssetCenter(state, "workspace");
+  if (action === "add-project-asset") {
+    state = addWorkspaceAssetToProject(state, target.dataset.assetId);
+    notice = "资产已以引用方式加入当前项目，未复制底层文件";
+  }
+  if (action === "add-session-asset") {
+    state = addAssetToSessionContext(state, target.dataset.assetId);
+    notice = "资产已加入当前会话上下文";
+  }
+  if (action === "remove-session-asset") {
+    state = removeAssetFromSessionContext(state, target.dataset.assetId);
+    notice = "已从当前会话移除，原资产仍然保留";
+  }
+  if (action === "create-workspace-folder") {
+    state = createWorkspaceFolder(state, `新建资料文件夹 ${getWorkspaceFolders(state).length + 1}`);
+    notice = "已在工作空间创建演示文件夹";
+  }
+  if (action === "upload-library-asset" || action === "upload-project-asset") {
+    const scope = action === "upload-project-asset" ? "project" : target.dataset.scope;
+    state = uploadDemoAsset(state, {
+      name: scope === "project" ? "项目补充资料.pdf" : "新上传营销资料.pdf",
+      type: "pdf",
+      scope: scope === "project" ? "project" : "workspace",
+      folderId: scope === "workspace" ? state.active.assetFolderId : null,
+    });
+    if (scope === "project") state = openProjectAssetMode(state);
+    notice = scope === "project" ? "演示资产已上传到当前项目" : "演示资产已上传到工作空间";
+  }
+  if (action === "understand-selected-asset") {
+    state = requestAssetUnderstanding(state, [target.dataset.assetId]);
+    notice = "已开始理解所选资产；上传和 AI 理解是两项独立操作";
+  }
+  if (action === "open-session-asset-picker") state = toggleSessionAssetPicker(state, true, "project");
+  if (action === "close-session-asset-picker") state = toggleSessionAssetPicker(state, false);
+  if (action === "set-asset-picker-scope") state = toggleSessionAssetPicker(state, true, target.dataset.scope);
+  if (action === "confirm-session-assets") {
+    const selectedIds = [...document.querySelectorAll("[data-session-asset-choice]:checked")].map((input) => input.value);
+    for (const assetId of selectedIds) state = addAssetToSessionContext(state, assetId);
+    state = toggleSessionAssetPicker(state, false);
+    notice = `${selectedIds.length} 项资产已加入当前会话`;
+  }
   if (action === "open-chief-chat") state = openChiefChat(state);
   if (action === "new-chief-chat") state = createChiefChat(state, { title: "新营销讨论" });
   if (action === "select-chief-chat") state = selectChiefChat(state, target.dataset.chatId);
@@ -1452,6 +1611,7 @@ function handleSubmit(event) {
   state = createBlankProject(state, {
     name,
     description: descriptionInput?.value ?? "",
+    workspaceAssetIds: [...event.target.querySelectorAll('input[name="workspaceAssetIds"]:checked')].map((input) => input.value),
   });
   notice = `项目「${name}」已创建`;
   render();

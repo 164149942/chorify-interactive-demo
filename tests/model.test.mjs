@@ -47,6 +47,22 @@ import {
   getSessionAssets,
   getProjectInputAssets,
   promoteAssetScope,
+  getWorkspaceAssets,
+  getWorkspaceFolders,
+  getProjectAssetReferences,
+  getProjectLibraryAssets,
+  getSessionContextAssets,
+  openAssetCenter,
+  setAssetCenterScope,
+  openProjectAssetMode,
+  selectLibraryAsset,
+  addWorkspaceAssetToProject,
+  addAssetToSessionContext,
+  removeAssetFromSessionContext,
+  createWorkspaceFolder,
+  uploadDemoAsset,
+  requestAssetUnderstanding,
+  toggleSessionAssetPicker,
   getTaskStoryboards,
   selectStoryboard,
   requestStoryboardRevision,
@@ -1005,6 +1021,93 @@ test("asset promotion changes scope in place without duplicating its identity", 
   assert.equal(state.inputAssets[asset.id].scope, "brand");
   assert.deepEqual(Object.keys(state.inputAssets), allIdsBefore);
   assert.throws(() => promoteAssetScope(state, asset.id, "session"), /scope/i);
+});
+
+test("workspace project and session assets share identity without implicit promotion", () => {
+  let state = createInitialState();
+  const referencedIds = new Set(getProjectAssetReferences(state).map((item) => item.assetId));
+  const asset = getWorkspaceAssets(state).find((item) => !referencedIds.has(item.id));
+  assert.ok(asset);
+
+  state = addAssetToSessionContext(state, asset.id, state.active.sessionId);
+  assert.equal(getSessionContextAssets(state).some((item) => item.id === asset.id), true);
+  assert.equal(getProjectAssetReferences(state).some((item) => item.assetId === asset.id), false);
+
+  state = addWorkspaceAssetToProject(state, asset.id, state.active.projectId);
+  const reference = getProjectAssetReferences(state).find((item) => item.assetId === asset.id);
+  assert.equal(reference.assetId, asset.id);
+  assert.equal(reference.version, asset.version);
+  assert.equal(getWorkspaceAssets(state).filter((item) => item.id === asset.id).length, 1);
+});
+
+test("asset center scopes and project asset mode keep the four-panel project context", () => {
+  let state = openAssetCenter(createInitialState(), "workspace");
+  assert.equal(state.ui.productScreen, "asset-center");
+  assert.equal(state.active.assetCenterScope, "workspace");
+  assert.ok(state.active.assetId);
+
+  state = setAssetCenterScope(state, "project");
+  assert.equal(state.active.assetCenterScope, "project");
+
+  state = openProjectAssetMode(state);
+  assert.equal(state.ui.productScreen, "workspace");
+  assert.equal(state.active.workspaceMode, "project-assets");
+  assert.equal(state.ui.deliveryBrowserCollapsed, false);
+  assert.equal(state.ui.centralWorkspaceCollapsed, false);
+  assert.equal(state.ui.aiPanelCollapsed, false);
+});
+
+test("project assets are flat decorated references while workspace assets own folders", () => {
+  const state = createInitialState();
+  const folders = getWorkspaceFolders(state);
+  const projectAssets = getProjectLibraryAssets(state);
+
+  assert.ok(folders.length >= 2);
+  assert.ok(projectAssets.length >= 2);
+  assert.equal(projectAssets.every((item) => item.projectId === state.active.projectId), true);
+  assert.equal(projectAssets.every((item) => item.asset && item.asset.id === item.assetId), true);
+});
+
+test("library selection session removal folder creation upload and understanding are immutable", () => {
+  let state = createInitialState();
+  const original = state;
+  const asset = getWorkspaceAssets(state)[0];
+
+  state = selectLibraryAsset(state, asset.id);
+  assert.equal(state.active.assetId, asset.id);
+  assert.notEqual(state, original);
+
+  state = addAssetToSessionContext(state, asset.id);
+  assert.equal(getSessionContextAssets(state).some((item) => item.id === asset.id), true);
+  state = removeAssetFromSessionContext(state, asset.id);
+  assert.equal(getSessionContextAssets(state).some((item) => item.id === asset.id), false);
+
+  const folderCount = getWorkspaceFolders(state).length;
+  state = createWorkspaceFolder(state, "新品资料");
+  assert.equal(getWorkspaceFolders(state).length, folderCount + 1);
+
+  const assetCount = getWorkspaceAssets(state).length;
+  state = uploadDemoAsset(state, { name: "新品说明书.pdf", type: "pdf", scope: "workspace" });
+  assert.equal(getWorkspaceAssets(state).length, assetCount + 1);
+  const uploaded = getWorkspaceAssets(state).find((item) => item.name === "新品说明书.pdf");
+  assert.equal(uploaded.aiStatus, "not_understood");
+
+  state = requestAssetUnderstanding(state, [uploaded.id]);
+  assert.equal(getWorkspaceAssets(state).find((item) => item.id === uploaded.id).aiStatus, "understanding");
+
+  state = toggleSessionAssetPicker(state, true);
+  assert.equal(state.ui.sessionAssetPickerOpen, true);
+  assert.equal(state.ui.assetPickerScope, "project");
+});
+
+test("blank project creation can pin selected workspace assets without copying them", () => {
+  const seed = createInitialState();
+  const assetIds = getWorkspaceAssets(seed).slice(0, 2).map((asset) => asset.id);
+  const state = createBlankProject(seed, { name: "新品项目", workspaceAssetIds: assetIds });
+  const references = getProjectAssetReferences(state);
+
+  assert.deepEqual(references.map((reference) => reference.assetId), assetIds);
+  assert.equal(getWorkspaceAssets(state).filter((asset) => assetIds.includes(asset.id)).length, 2);
 });
 
 test("each video storyboard can be selected and revised independently", () => {

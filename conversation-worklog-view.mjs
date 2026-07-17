@@ -339,13 +339,14 @@ function renderPendingBar(actions) {
     </button>`;
 }
 
-function renderComposer(contextLabel) {
+function renderComposer(contextLabel, sessionAssetsHtml = "") {
   return `
     <div class="ai-composer worklog-composer">
       <div class="ai-quick-actions"><button data-action="quick-ai" data-prompt="总结当前营销任务的进展和下一步。">总结进展</button><button data-action="quick-ai" data-prompt="检查当前交付物是否符合营销目标。">检查目标</button><button data-action="quick-ai" data-prompt="给我三个可以继续优化的方向。">优化建议</button></div>
       <div class="composer-context"><span>AI</span>${escapeHtml(contextLabel)}</div>
+      ${sessionAssetsHtml}
       <textarea id="ai-input" rows="3" placeholder="告诉 AI 你想做什么；可上传图片、视频、链接…"></textarea>
-      <div class="composer-actions"><div><button aria-label="添加附件">＋</button><button aria-label="快捷指令">⌘</button><button aria-label="表情">☺</button></div><button class="send-button" data-action="send-ai" aria-label="发送">➤</button></div>
+      <div class="composer-actions"><div><button data-action="open-session-asset-picker" aria-label="添加资产" title="添加资产">＋</button><button aria-label="快捷指令">⌘</button><button aria-label="表情">☺</button></div><button class="send-button" data-action="send-ai" aria-label="发送">➤</button></div>
     </div>`;
 }
 
@@ -367,6 +368,6 @@ export function renderConversationWorklog(viewModel, options = {}) {
     <div class="worklog-context"><span>当前上下文</span><div><b>${escapeHtml(projectName)}</b><i>›</i><b>${escapeHtml(sessionTitle)}</b><i>›</i><strong>${escapeHtml(objectTitle)}</strong></div></div>
     ${renderTimeline(viewModel, records, options.productImage ?? "", options.snapshot ?? null, options.currentObject ?? null)}
     ${renderPendingBar(visiblePendingActions)}
-    ${renderComposer(options.composerContext ?? `当前任务：${objectTitle}`)}
+    ${renderComposer(options.composerContext ?? `当前任务：${objectTitle}`, options.sessionAssetsHtml ?? "")}
   `;
 }
