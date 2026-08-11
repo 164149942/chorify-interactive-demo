@@ -9,6 +9,8 @@ import {
   goHome,
   openOrder,
   requestCandidateRevision,
+  reopenOrderConfiguration,
+  cancelOrderConfigurationEdit,
   resolveMissingMaterial,
   selectCandidate,
   sendConversationMessage,
@@ -98,6 +100,16 @@ function handleClick(event) {
   if (action === 'apply-preset') {
     state = applyDemoPreset(state);
     render();
+    return;
+  }
+  if (action === 'reopen-configuration') {
+    state = reopenOrderConfiguration(state);
+    render({ scrollConversation: true });
+    return;
+  }
+  if (action === 'cancel-configuration-edit') {
+    state = cancelOrderConfigurationEdit(state);
+    render({ scrollConversation: true });
     return;
   }
   if (action === 'pick-reference-library') {

@@ -12,6 +12,8 @@ import {
   approveCandidate,
   exportCandidate,
   requestCandidateRevision,
+  reopenOrderConfiguration,
+  cancelOrderConfigurationEdit,
   selectCandidate,
   sendConversationMessage,
   submitOrder,
@@ -77,6 +79,54 @@ test('submitting a complete order folds the form and begins the replication work
   assert.equal(order.progress, 12);
   assert.equal(order.messages.at(-1).kind, 'progress');
   assert.deepEqual(getMarketingFactoryViewModel(state).visiblePanes, ['sessions', 'conversation']);
+});
+
+test('reopening configuration preserves generated candidates selected video and versions', () => {
+  let state = submitOrder(createConfiguredOrder());
+  state = advanceOrder(advanceOrder(advanceOrder(state)));
+  const candidateId = state.orders[state.activeOrderId].candidates[0].id;
+  state = selectCandidate(state, candidateId);
+  state = requestCandidateRevision(state, candidateId, '保留旧版本测试');
+
+  const before = structuredClone(state.orders[state.activeOrderId]);
+  state = reopenOrderConfiguration(state);
+  const reopened = state.orders[state.activeOrderId];
+
+  assert.equal(reopened.formCollapsed, false);
+  assert.equal(reopened.editingConfiguration, true);
+  assert.deepEqual(reopened.candidates, before.candidates);
+  assert.equal(reopened.selectedCandidateId, candidateId);
+  assert.deepEqual(reopened.panes, before.panes);
+  assert.deepEqual(reopened.candidates[0].versionHistory, before.candidates[0].versionHistory);
+});
+
+test('cancelling reopened configuration restores the last submitted values', () => {
+  let state = submitOrder(createConfiguredOrder());
+  const submittedDraft = structuredClone(state.orders[state.activeOrderId].draft);
+  state = reopenOrderConfiguration(state);
+  state = updateOrderDraft(state, { market: '美国', candidateCount: 5 });
+  state = cancelOrderConfigurationEdit(state);
+  const order = state.orders[state.activeOrderId];
+
+  assert.equal(order.formCollapsed, true);
+  assert.equal(order.editingConfiguration, false);
+  assert.deepEqual(order.draft, submittedDraft);
+});
+
+test('saving reopened configuration replaces candidate slots without retaining a stale detail selection', () => {
+  let state = submitOrder(createConfiguredOrder());
+  state = advanceOrder(advanceOrder(advanceOrder(state)));
+  const previousCandidateId = state.orders[state.activeOrderId].candidates[0].id;
+  state = selectCandidate(state, previousCandidateId);
+  state = reopenOrderConfiguration(state);
+  state = updateOrderDraft(state, { candidateCount: 1 });
+  state = submitOrder(state);
+  state = advanceOrder(advanceOrder(state));
+  const order = state.orders[state.activeOrderId];
+
+  assert.equal(order.candidates.length, 1);
+  assert.equal(order.selectedCandidateId, null);
+  assert.equal(order.panes.detail, false);
 });
 
 test('the first previewable candidate opens results once while detail remains user controlled', () => {

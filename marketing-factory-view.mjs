@@ -196,9 +196,10 @@ function renderGoalSection(order, goal) {
 }
 
 function renderConfiguration(order) {
+  const editing = order.editingConfiguration;
   return `
-    <form id="replication-config" class="replication-form">
-      <div class="embedded-card-heading"><div><span class="assistant-chip">AI 引导</span><h2>复刻配置</h2><p>一次确认全部生产条件。你也可以随时用自然语言修改，表单会同步更新。</p></div><button type="button" class="ghost-button" data-action="apply-preset">填入演示资料</button></div>
+    <form id="replication-config" class="replication-form ${editing ? 'is-editing' : ''}">
+      <div class="embedded-card-heading"><div><span class="assistant-chip">${editing ? '修改当前任务' : 'AI 引导'}</span><h2>${editing ? '重新配置复刻任务' : '复刻配置'}</h2><p>${editing ? '已保留现有候选与审核结果；保存后才会按新配置重新生成。' : '一次确认全部生产条件。你也可以随时用自然语言修改，表单会同步更新。'}</p></div>${editing ? '' : '<button type="button" class="ghost-button" data-action="apply-preset">填入演示资料</button>'}</div>
       ${renderSourceField({ title: '参考视频', hint: '上传你想复刻的爆款营销视频', type: 'reference', value: order.draft.reference.name, error: fieldError(order, 'reference') })}
       ${renderSourceField({ title: '目标商品', hint: '选择需要替换进视频的新商品', type: 'product', value: order.draft.product.name, error: fieldError(order, 'product') })}
       <section class="form-section ${order.validationErrors.includes('market') ? 'has-error' : ''}">
@@ -219,7 +220,8 @@ function renderConfiguration(order) {
       <section class="form-section form-footer-section">
         <div><strong>候选视频数量</strong><span>首个结果完成后自动打开结果区</span></div>
         <div class="segmented candidate-count">${[1, 3, 5].map((count) => `<button type="button" data-action="set-candidate-count" data-value="${count}" class="${order.draft.candidateCount === count ? 'is-active' : ''}">${count} 条</button>`).join('')}</div>
-        <button class="submit-button" type="submit">确认配置并开始复刻 ${icon('chevron', 16)}</button>
+        ${editing ? '<button class="small-button" type="button" data-action="cancel-configuration-edit">取消修改</button>' : ''}
+        <button class="submit-button" type="submit">${editing ? '保存配置并重新生成' : '确认配置并开始复刻'} ${icon('chevron', 16)}</button>
       </section>
     </form>`;
 }
@@ -239,7 +241,7 @@ function renderLockedSummary(order) {
     <article class="config-summary-card">
       <div><span class="summary-kicker">配置已锁定</span><strong>${escapeHtml(order.draft.reference.name)} → ${escapeHtml(order.draft.product.name)}</strong><p>${escapeHtml(order.draft.market)} · ${escapeHtml(order.draft.language)} · ${order.draft.candidateCount} 条候选</p></div>
       <div class="summary-goals">${escapeHtml(activeGoals)}</div>
-      <button class="small-button" data-action="placeholder">重新打开配置</button>
+      <button class="small-button" data-action="reopen-configuration">重新打开配置</button>
     </article>`;
 }
 
@@ -261,7 +263,7 @@ function renderConversationPane(order) {
       <div class="conversation-scroll" data-scroll-region="conversation">
         <div class="context-strip"><span>当前任务</span><strong>${escapeHtml(order.title)}</strong><em>${escapeHtml(order.status)}</em></div>
         ${order.messages.map(renderMessage).join('')}
-        ${order.phase === 'draft' ? renderConfiguration(order) : renderLockedSummary(order)}
+        ${order.phase === 'draft' || order.editingConfiguration ? renderConfiguration(order) : renderLockedSummary(order)}
         ${renderPendingAction(order)}
       </div>
       <form class="composer" id="conversation-composer">

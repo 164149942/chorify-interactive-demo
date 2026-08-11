@@ -11,6 +11,7 @@ import {
   getMarketingFactoryViewModel,
   selectCandidate,
   requestCandidateRevision,
+  reopenOrderConfiguration,
   submitOrder,
 } from '../marketing-factory-model.mjs';
 import { renderMarketingFactory } from '../marketing-factory-view.mjs';
@@ -58,6 +59,19 @@ test('running order replaces the open form with a compact summary and progress l
   assert.match(html, /正在读取参考视频结构/);
   assert.match(html, /12%/);
   assert.doesNotMatch(html, /id="replication-config"/);
+  assert.match(html, /data-action="reopen-configuration"/);
+});
+
+test('reopened configuration keeps submitted values and exposes cancel and regenerate actions', () => {
+  let state = submitOrder(applyDemoPreset(createOrder(createDemoState())));
+  state = reopenOrderConfiguration(state);
+  const html = render(state);
+
+  assert.match(html, /id="replication-config"/);
+  assert.match(html, /TikTok 爆款榨汁杯视频\.mp4/);
+  assert.match(html, /便携式榨汁杯 Pro/);
+  assert.match(html, /data-action="cancel-configuration-edit"/);
+  assert.match(html, /保存配置并重新生成/);
 });
 
 test('first previewable result opens a candidate panel without opening detail', () => {

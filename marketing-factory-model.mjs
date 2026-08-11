@@ -44,6 +44,8 @@ function createBlankOrder(id, number) {
     progress: 0,
     progressStep: 0,
     formCollapsed: false,
+    editingConfiguration: false,
+    submittedDraft: null,
     validationErrors: [],
     draft: createDraft(),
     panes: {
@@ -85,6 +87,7 @@ function createSeedOrder({ id, title, market, product, status, phase, readyCount
     market,
     ...MARKET_LOCALIZATION[market],
   };
+  order.submittedDraft = clone(order.draft);
   order.candidates = createCandidateSlots(id, 3).map((candidate, index) => ({
     ...candidate,
     status: index < readyCount ? 'previewable' : index === readyCount ? 'generating' : 'queued',
@@ -194,7 +197,7 @@ export function goHome(state) {
 
 export function updateOrderDraft(state, patch) {
   return updateActiveOrder(state, (order) => {
-    if (order.phase !== 'draft') return order;
+    if (order.phase !== 'draft' && !order.editingConfiguration) return order;
     order.draft = { ...order.draft, ...clone(patch) };
     if (Object.hasOwn(patch, 'market')) {
       const localization = MARKET_LOCALIZATION[patch.market] || { language: '', subtitleMode: '' };
@@ -209,7 +212,7 @@ export function updateOrderDraft(state, patch) {
 export function toggleChangeGoal(state, goal) {
   if (!GOAL_ORDER.includes(goal) || goal === 'product') return state;
   return updateActiveOrder(state, (order) => {
-    if (order.phase !== 'draft') return order;
+    if (order.phase !== 'draft' && !order.editingConfiguration) return order;
     order.draft.goals[goal] = !order.draft.goals[goal];
     return order;
   });
@@ -245,7 +248,8 @@ export function applyDemoPreset(state) {
 
 export function submitOrder(state) {
   return updateActiveOrder(state, (order) => {
-    if (order.phase !== 'draft') return order;
+    if (order.phase !== 'draft' && !order.editingConfiguration) return order;
+    const wasEditing = order.editingConfiguration;
     const missing = [];
     if (!order.draft.reference.name) missing.push('reference');
     if (!order.draft.product.name) missing.push('product');
@@ -258,11 +262,15 @@ export function submitOrder(state) {
     order.progress = 12;
     order.progressStep = 0;
     order.formCollapsed = true;
+    order.editingConfiguration = false;
+    order.submittedDraft = clone(order.draft);
     order.subtitle = `${order.draft.market} · ${order.draft.product.name}`;
     appendMessage(order, {
       role: 'user',
       kind: 'summary',
-      text: `确认复刻：${order.draft.reference.name} → ${order.draft.product.name}，投放 ${order.draft.market}，生成 ${order.draft.candidateCount} 条。`,
+      text: wasEditing
+        ? `已更新复刻配置：${order.draft.reference.name} → ${order.draft.product.name}，投放 ${order.draft.market}，重新生成 ${order.draft.candidateCount} 条。`
+        : `确认复刻：${order.draft.reference.name} → ${order.draft.product.name}，投放 ${order.draft.market}，生成 ${order.draft.candidateCount} 条。`,
     });
     appendMessage(order, {
       role: 'assistant',
@@ -270,6 +278,29 @@ export function submitOrder(state) {
       text: '正在读取参考视频结构、商品出现位置、人物、字幕和场景。',
       progress: 12,
     });
+    return order;
+  });
+}
+
+export function reopenOrderConfiguration(state) {
+  return updateActiveOrder(state, (order) => {
+    if (order.phase === 'draft' || order.editingConfiguration) return order;
+    order.submittedDraft ||= clone(order.draft);
+    order.draft = clone(order.submittedDraft);
+    order.editingConfiguration = true;
+    order.formCollapsed = false;
+    order.validationErrors = [];
+    return order;
+  });
+}
+
+export function cancelOrderConfigurationEdit(state) {
+  return updateActiveOrder(state, (order) => {
+    if (!order.editingConfiguration) return order;
+    if (order.submittedDraft) order.draft = clone(order.submittedDraft);
+    order.editingConfiguration = false;
+    order.formCollapsed = true;
+    order.validationErrors = [];
     return order;
   });
 }
@@ -296,6 +327,8 @@ export function advanceOrder(state) {
       order.progress = 52;
       order.status = '正在映射替换对象';
       order.candidates = createCandidateSlots(order.id, order.draft.candidateCount);
+      order.selectedCandidateId = null;
+      order.panes.detail = false;
       appendMessage(order, {
         role: 'assistant',
         kind: 'progress',
@@ -465,7 +498,7 @@ export function sendConversationMessage(state, text) {
   if (!cleanText) return state;
   return updateActiveOrder(state, (order) => {
     appendMessage(order, { role: 'user', kind: 'message', text: cleanText });
-    if (order.phase === 'draft') {
+    if (order.phase === 'draft' || order.editingConfiguration) {
       const markets = Object.keys(MARKET_LOCALIZATION);
       const market = markets.find((item) => cleanText.includes(item));
       if (market) {
