@@ -1,2 +1,3 @@
 .vercel/
+.env*
 screenshots/detail-1366.png
