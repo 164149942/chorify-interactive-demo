@@ -3,10 +3,10 @@ import {
   applyDemoPreset,
   approveCandidate,
   createDemoState,
-  createOrder,
   exportCandidate,
   getMarketingFactoryViewModel,
   goHome,
+  openReplicationTool,
   openOrder,
   requestCandidateRevision,
   reopenOrderConfiguration,
@@ -14,6 +14,7 @@ import {
   resolveMissingMaterial,
   selectCandidate,
   sendConversationMessage,
+  sendPreviewRevision,
   submitOrder,
   toggleChangeGoal,
   togglePanel,
@@ -79,9 +80,9 @@ function handleClick(event) {
   if (!target) return;
   const action = target.dataset.action;
 
-  if (action === 'create-order') {
+  if (action === 'open-replication-tool') {
     clearProgressTimer();
-    state = createOrder(state);
+    state = openReplicationTool(state, target.dataset.source || 'tool');
     render();
     return;
   }
@@ -208,6 +209,27 @@ function handleSubmit(event) {
     if (!value.trim()) return;
     state = sendConversationMessage(state, value);
     render({ scrollConversation: true });
+    return;
+  }
+  if (event.target.id === 'home-composer') {
+    event.preventDefault();
+    const input = event.target.querySelector('#home-input');
+    const value = input?.value || '';
+    if (!value.trim()) return;
+    state = openReplicationTool(state, 'home-prompt');
+    state = sendConversationMessage(state, value);
+    render({ scrollConversation: true });
+    return;
+  }
+  if (event.target.id === 'preview-revision-form') {
+    event.preventDefault();
+    const candidateId = activeOrder()?.selectedCandidateId;
+    const input = event.target.querySelector('#preview-revision-input');
+    const value = input?.value || '';
+    if (!candidateId || !value.trim()) return;
+    state = sendPreviewRevision(state, candidateId, value);
+    render();
+    showNotice('修改要求已回流到当前 AI 对话，原版本会保留。');
   }
 }
 
