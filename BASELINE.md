@@ -1,42 +1,67 @@
-# Chorify Complete Demo v0.3 Baseline
+# Chorify 营销工厂 Demo v0.1
 
-- Copied from: `demo/chorify-complete-demo-v0.2`
-- Copied on: 2026-07-16
-- Isolation rule: all v0.3 changes stay in this directory; v0.2 and the single-page public demo remain frozen.
-- Deployment rule: this version is validated locally first and does not update the current Vercel deployment without a separate user confirmation.
-- Scope: Frame-style panel controls, permanent left-two delivery browser, card/list views, compact task overview, single-video package placeholder shell, blank-project auto-open and right-panel result linking.
-- Preserved behavior: ten-node task model, session isolation, five parallel video chains, per-storyboard approval, mandatory human review and the user-menu placeholder.
+## 产品范围
 
-## Current Iteration — 2026-07-16
+本版本是独立的纯前端交互验证，不修改公司线上 Chorify，也不连接真实 AI、视频生成、产品库、积分、上传、后端任务或导出。
 
-- Removed the duplicate `营销 Flow / 十节点轨道` from the top of the right AI panel.
-- Did not add a separate right-side timeline component.
-- The existing conversation and work-card area now owns the remaining panel height and scrolls vertically without shrinking its cards.
-- AI identity, current context, pending-action bar and composer remain fixed outside the scrolling area.
-- Verified the right panel at 1920×1080 and 1366×768; the compact viewport produced a real scroll range and wheel input changed the content scroll position while the pending bar and composer stayed fixed.
+核心对象：
 
-## Frozen v0.2 SHA-256
+```text
+一条生产会话 / 复刻订单
+＝ 1 个参考营销视频
+＋ 1 个目标商品
+＋ 1 个目标市场
+＋ N 条候选视频及版本
+```
 
-These hashes record the exact v0.2 source used to create v0.3. Any mismatch means the protected v0.2 copy has changed.
+第一版锁定参考视频镜头顺序和整体节奏；目标商品替换全部露出位置。人物、场景、视频片段和品牌 Logo 按用户选择展开配置。
 
-| File | SHA-256 |
-| --- | --- |
-| `app.js` | `07D18074100D77EF2CC1A51970BB42EF0A22D91498C12937406F19DDDC458C14` |
-| `index.html` | `38DD4B9476D85B52CA7EB8AA8474F4804A61865076711ED486EC7160C9E6A0E8` |
-| `state-model.mjs` | `2C3C0480D9133481CB0A1DB5583B4E5547AE8685E31C64D6D752391CC481144D` |
-| `styles.css` | `98D933BAE13DACAD8C7C402311F7B1EA45D276B0335A0B09D59F0D765CD027CB` |
-| `conversation-worklog-view.mjs` | `32906690617D4B8621D8AAFDC6FB74515CA555A5AD09E1C3D68B350B988AD78F` |
-| `tests/model.test.mjs` | `68DFC29EEB3BA6A895B2D7308A48C9D84C30345A2C180B3260047620A37D68D7` |
-| `tests/conversation-worklog-view.test.mjs` | `A03FFF87767ED586C49E71FB024469BC40B40A8B9C99B4AD3B3D80E5252AAB40` |
+## 已实现主流程
 
-## v0.3 Acceptance — 2026-07-16
+```text
+营销工厂首页
+→ 新建空白生产会话
+→ 对话内一次性复刻配置
+→ 自然语言与表单双向同步
+→ AI 拆解/映射/生成进度
+→ 首条结果自动打开候选栏一次
+→ 缺料主动问询且不阻塞其他候选
+→ 用户选择候选后打开详情
+→ 修改保留旧版本
+→ 人工审核
+→ 审核通过后才能导出
+```
 
-- Static checks: `app.js`, `state-model.mjs` and `conversation-worklog-view.mjs` pass `node --check`.
-- Automated model/worklog tests: all pass.
-- Browser: Chrome headless, local static server on `http://127.0.0.1:4174/index.html`.
-- Verified at 1920×1080 and 1366×768 with no document-level horizontal overflow.
-- Verified top-right Frame-style on/off states, permanent left-two browser, card/list switching, maximize/restore and central/AI/project panel independence.
-- Verified blank project first action opens the central overview, preparation stops at 5/5 storyboard confirmation, and confirming storyboard 01 only generates video 01.
-- Verified right-side storyboard/video cards show `正在查看` when their exact object is open in the central workspace.
+渐进工作台：
 
-Screenshots are stored in `screenshots/`. The current Vercel deployment remains unchanged.
+- 空白：会话栏 + AI 对话栏。
+- 首条可预览：会话栏 + AI 对话栏 + 候选结果栏。
+- 用户选择视频：会话栏 + AI 对话栏 + 候选结果栏 + 视频详情栏。
+
+## 关键文件
+
+- `marketing-factory-model.mjs`：纯状态模型。
+- `marketing-factory-view.mjs`：可观察页面渲染。
+- `app.js`：浏览器事件、自动演示节奏与栏位联动。
+- `styles.css`：1920 / 1366 桌面布局与组件视觉。
+- `tests/marketing-factory-model.test.mjs`：订单和状态测试。
+- `tests/marketing-factory-view.test.mjs`：页面与交互语义测试。
+- `docs/superpowers/plans/2026-08-11-chorify-marketing-factory-demo.md`：实施计划。
+
+远程主分支中保留的旧 v0.3 模型、旧测试和旧截图仅作为历史对照；当前 `index.html` 不再引用它们。
+
+## 验收
+
+- 自动测试：19 项通过，0 项失败。
+- 浏览器：本机 Chrome，控制台与页面错误 0。
+- 1920 × 1080：首页、空白配置、首结果、三栏和详情均通过。
+- 1366 × 768：无页面级横向/纵向溢出；输入框和详情审核动作保持可达。
+- 验收截图：`screenshots/home-1920.png`、`blank-order-1920.png`、`results-1920.png`、`detail-1920.png`、`detail-1366-fixed.png`。
+
+## 下一阶段
+
+- 产品负责人体验并确认当前骨架。
+- 继续细化会话搜索/整理、候选筛选和批量操作。
+- 设计真实资产引用与素材沉淀。
+- 细化版本对比、审核和投放数据回流。
+- 由公司全栈团队决定如何集成进正式 Chorify。

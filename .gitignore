@@ -1,3 +1,2 @@
-.vercel
-.env*
-demo-v0.2-task-center-collapsed.png
+.vercel/
+screenshots/detail-1366.png
