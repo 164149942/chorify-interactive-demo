@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   advanceOrder,
@@ -46,6 +47,27 @@ test('opening the tool creates one chat and renders the structured form inline',
   assert.match(html, /视频片段/);
   assert.match(html, /品牌 Logo/);
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
+});
+
+test('the replication form is an AI tool message inside the existing conversation lane', () => {
+  const html = render(openReplicationTool(createDemoState(), 'welcome-card'));
+
+  assert.match(
+    html,
+    /class="conversation-lane"[\s\S]*class="chat-tool-message"[\s\S]*class="message-avatar"[^>]*>AI<[\s\S]*id="replication-config"/,
+  );
+  assert.match(html, /class="chat-composer conversation-composer"/);
+  assert.doesNotMatch(html, /aria-label="候选视频任务"/);
+});
+
+test('the form, messages, and composer share the original Chat width contract', () => {
+  const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.conversation-lane\s*\{[^}]*width:\s*min\(920px,\s*100%\)[^}]*margin:\s*0 auto/s);
+  assert.match(css, /\.conversation-scroll\s*\{[^}]*scrollbar-gutter:\s*stable both-edges/s);
+  assert.match(css, /\.conversation-composer\s*\{[^}]*width:\s*min\(920px,\s*calc\(100% - 36px\)\)[^}]*margin:\s*0 auto 14px/s);
+  assert.match(css, /\.chat-tool-message\s*\{[^}]*display:\s*flex[^}]*align-items:\s*flex-start/s);
+  assert.match(css, /\.chat-tool-message \.replication-card\s*\{[^}]*max-width:\s*none[^}]*margin:\s*0/s);
 });
 
 test('conditional replacement controls stay inside the chat form', () => {

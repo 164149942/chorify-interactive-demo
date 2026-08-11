@@ -40,6 +40,8 @@ Chorify AI 新会话
 
 右上角任务/预览开关复刻 Frame 的状态语义：打开时紫色、加粗边框和内部线条；关闭时恢复深色细线。
 
+视频复刻表单以 AI 工具消息嵌入原 Chat 对话流。普通消息、工具表单与底部输入框共享最大 `920px` 内容轨道；表单可以使用消息内更大的横向空间，但不得改变 Chat 主栏或输入框宽度。长表单随对话内容区滚动，提交前任务栏和预览栏保持关闭。
+
 ## 复刻配置范围
 
 - 参考视频：上传文件或粘贴公开链接。
@@ -55,10 +57,10 @@ Chorify AI 新会话
 
 ## 验收结果
 
-- 自动测试：46 项通过，0 项失败。
+- 自动测试：`node --test tests/*.test.mjs` 共 48 项通过，0 项失败。
 - 浏览器完整走查：调用工具、配置、提交、自动进度、候选选择、预览、修改回流、重新打开配置均通过。
-- 1920 × 1080：工作区无横向溢出。
-- 1366 × 768：中央对话、候选任务和视频预览保持可用。
+- 1920 × 1080：对话轨道与输入框均为 920px，左右边界一致，工作区无横向溢出。
+- 1366 × 768：对话轨道与输入框左右边界一致；长表单可在会话区滚动，主要操作保持可用。
 - 浏览器控制台：错误与警告 0。
 
 ## 关键文件
@@ -68,7 +70,7 @@ Chorify AI 新会话
 - `app.js`：事件联动、自动演示节奏和修改回流。
 - `styles.css`：桌面端 Chat 与多栏工作区视觉。
 - `tests/marketing-factory-model.test.mjs`：18 项复刻订单状态测试。
-- `tests/marketing-factory-view.test.mjs`：8 项当前 Chat 界面语义测试。
+- `tests/marketing-factory-view.test.mjs`：10 项当前 Chat 界面语义与宽度契约测试。
 - `docs/superpowers/specs/2026-08-11-chat-video-replication-tool-design.md`：本轮确认的产品设计。
 - `docs/superpowers/plans/2026-08-11-chat-video-replication-tool.md`：本轮实施计划。
 

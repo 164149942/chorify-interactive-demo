@@ -162,6 +162,10 @@ function renderConfigSummary(order) {
   return `<article class="config-summary"><div><span>${icon('check', 15)} 配置已确认</span><strong>${escapeHtml(order.draft.reference.name)} → ${escapeHtml(order.draft.product.name)}</strong><p>${escapeHtml(order.draft.market)} · ${escapeHtml(order.draft.language)} · ${order.draft.candidateCount} 条候选</p></div><button data-action="reopen-configuration">重新打开配置</button></article>`;
 }
 
+function renderConfigurationMessage(order) {
+  return `<article class="chat-tool-message"><div class="message-avatar">AI</div><div class="tool-message-body">${renderConfiguration(order)}</div></article>`;
+}
+
 function renderPending(order) {
   if (!order.pendingAction) return '';
   return `<article class="pending-action"><span>需要你补充</span><strong>${escapeHtml(order.pendingAction.title)}</strong><p>${escapeHtml(order.pendingAction.description)}</p><div><button data-action="resolve-material" data-strategy="upload">我来上传素材</button><button class="primary" data-action="resolve-material" data-strategy="ai">让 AI 生成替代场景</button></div></article>`;
@@ -172,12 +176,14 @@ function renderConversation(order) {
     <main class="conversation-column" aria-label="AI 聊天会话">
       <div class="conversation-agent"><span class="ai-avatar">AI</span><div><strong>Chorify 创作智能体</strong><small><i></i> 已连接当前会话</small></div><button data-action="placeholder">•••</button></div>
       <div class="conversation-scroll" data-scroll-region="conversation">
-        <div class="context-bar"><span>当前任务</span><strong>${escapeHtml(order.title)}</strong><em>${escapeHtml(order.status)}</em></div>
-        ${order.messages.map(renderMessage).join('')}
-        ${order.phase === 'draft' || order.editingConfiguration ? renderConfiguration(order) : renderConfigSummary(order)}
-        ${renderPending(order)}
+        <div class="conversation-lane">
+          <div class="context-bar"><span>当前任务</span><strong>${escapeHtml(order.title)}</strong><em>${escapeHtml(order.status)}</em></div>
+          ${order.messages.map(renderMessage).join('')}
+          ${order.phase === 'draft' || order.editingConfiguration ? renderConfigurationMessage(order) : renderConfigSummary(order)}
+          ${renderPending(order)}
+        </div>
       </div>
-      <form class="chat-composer" id="conversation-composer"><small>${icon('chat', 13)} 当前上下文：${escapeHtml(order.title)}</small><textarea id="conversation-input" placeholder="继续补充要求，或用自然语言修改上方配置…"></textarea><div><span><button type="button" data-action="placeholder">＋</button><button type="button" data-action="placeholder">@ 资产</button><button type="button" data-action="open-replication-tool" data-source="composer-tool">${icon('video', 15)} 视频复刻</button></span><button class="send-button" type="submit">${icon('send')}</button></div></form>
+      <form class="chat-composer conversation-composer" id="conversation-composer"><small>${icon('chat', 13)} 当前上下文：${escapeHtml(order.title)}</small><textarea id="conversation-input" placeholder="继续补充要求，或用自然语言修改上方配置…"></textarea><div><span><button type="button" data-action="placeholder">＋</button><button type="button" data-action="placeholder">@ 资产</button><button type="button" data-action="open-replication-tool" data-source="composer-tool">${icon('video', 15)} 视频复刻</button></span><button class="send-button" type="submit">${icon('send')}</button></div></form>
     </main>`;
 }
 
