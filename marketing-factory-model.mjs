@@ -58,6 +58,7 @@ function createBlankOrder(id, number) {
     resultsManuallyClosed: false,
     selectedCandidateId: null,
     pendingAction: null,
+    toolEntrySource: 'new-chat',
     candidates: [],
     messages: [
       {
@@ -168,16 +169,28 @@ export function createDemoState() {
   };
 }
 
-export function createOrder(state) {
+export function createOrder(state, { source = 'new-chat' } = {}) {
   const next = clone(state);
   const id = `order-new-${next.nextOrderNumber}`;
   const order = createBlankOrder(id, next.nextOrderNumber);
+  order.toolEntrySource = source;
   next.nextOrderNumber += 1;
   next.orderIds.unshift(id);
   next.orders[id] = order;
   next.activeOrderId = id;
   next.page = 'workbench';
   return next;
+}
+
+export function openReplicationTool(state, source = 'tool') {
+  if (!state.activeOrderId || !state.orders[state.activeOrderId]) {
+    return createOrder(state, { source });
+  }
+  return updateActiveOrder(state, (order) => {
+    order.toolEntrySource = source;
+    if (order.phase === 'draft') order.formCollapsed = false;
+    return order;
+  });
 }
 
 export function openOrder(state, orderId) {
@@ -265,6 +278,13 @@ export function submitOrder(state) {
     order.editingConfiguration = false;
     order.submittedDraft = clone(order.draft);
     order.subtitle = `${order.draft.market} · ${order.draft.product.name}`;
+    order.candidates = createCandidateSlots(order.id, order.draft.candidateCount);
+    order.selectedCandidateId = null;
+    order.pendingAction = null;
+    order.panes.results = true;
+    order.panes.detail = false;
+    order.resultsAutoOpened = true;
+    order.resultsManuallyClosed = false;
     appendMessage(order, {
       role: 'user',
       kind: 'summary',
@@ -326,7 +346,7 @@ export function advanceOrder(state) {
       order.progressStep = 2;
       order.progress = 52;
       order.status = '正在映射替换对象';
-      order.candidates = createCandidateSlots(order.id, order.draft.candidateCount);
+      if (!order.candidates.length) order.candidates = createCandidateSlots(order.id, order.draft.candidateCount);
       order.selectedCandidateId = null;
       order.panes.detail = false;
       appendMessage(order, {
@@ -509,9 +529,16 @@ export function sendConversationMessage(state, text) {
       const countMatch = cleanText.match(/(?:生成|做)\s*([135])\s*条/);
       if (countMatch) order.draft.candidateCount = Number(countMatch[1]);
       if (cleanText.includes('人物')) order.draft.goals.person = true;
+      if (cleanText.includes('拉丁裔年轻女性')) order.draft.personDescription = '拉丁裔年轻女性，自然妆容，真实生活方式创作者';
       if (cleanText.includes('场景')) order.draft.goals.scene = true;
       if (cleanText.includes('素材片段') || cleanText.includes('视频片段')) order.draft.goals.clip = true;
       if (cleanText.includes('Logo') || cleanText.includes('品牌')) order.draft.goals.brand = true;
+      if (cleanText.includes('其他都保持原视频')) {
+        order.draft.goals.person = false;
+        order.draft.goals.scene = false;
+        order.draft.goals.clip = false;
+        order.draft.goals.brand = false;
+      }
       appendMessage(order, {
         role: 'assistant',
         kind: 'message',
@@ -524,6 +551,22 @@ export function sendConversationMessage(state, text) {
         text: '我已记录这条修改要求。已生成结果会保留；涉及正在生成的候选时，我会先展示影响范围再继续。',
       });
     }
+    return order;
+  });
+}
+
+export function sendPreviewRevision(state, candidateId, text) {
+  const cleanText = String(text || '').trim();
+  if (!cleanText) return state;
+  return updateActiveOrder(state, (order) => {
+    const candidate = order.candidates.find((item) => item.id === candidateId);
+    if (!candidate) return order;
+    appendMessage(order, { role: 'user', kind: 'revision', text: cleanText, candidateId });
+    appendMessage(order, {
+      role: 'assistant',
+      kind: 'message',
+      text: `已记录对候选 ${String(candidate.number).padStart(2, '0')} 的修改要求。原版本会保留，我会生成一个可对比的新版本。`,
+    });
     return order;
   });
 }

@@ -7,6 +7,7 @@ import {
   createDemoState,
   createOrder,
   getMarketingFactoryViewModel,
+  openReplicationTool,
   openOrder,
   resolveMissingMaterial,
   approveCandidate,
@@ -16,6 +17,7 @@ import {
   cancelOrderConfigurationEdit,
   selectCandidate,
   sendConversationMessage,
+  sendPreviewRevision,
   submitOrder,
   toggleChangeGoal,
   togglePanel,
@@ -27,6 +29,30 @@ function createConfiguredOrder() {
   state = applyDemoPreset(state);
   return state;
 }
+
+test('all video replication entry points reuse the same conversation form', () => {
+  let state = openReplicationTool(createDemoState(), 'home-card');
+  const firstId = state.activeOrderId;
+
+  state = openReplicationTool(state, 'composer-tool');
+
+  assert.equal(state.activeOrderId, firstId);
+  assert.equal(state.orderIds.filter((id) => id.startsWith('order-new-')).length, 1);
+  assert.equal(state.orders[firstId].toolEntrySource, 'composer-tool');
+  assert.equal(state.orders[firstId].formCollapsed, false);
+});
+
+test('a bound conversation cannot create a second replication order', () => {
+  let state = openReplicationTool(createDemoState(), 'home-card');
+  state = applyDemoPreset(state);
+  state = submitOrder(state);
+  const ids = state.orderIds.slice();
+
+  state = openReplicationTool(state, 'natural-language');
+
+  assert.deepEqual(state.orderIds, ids);
+  assert.equal(state.orders[state.activeOrderId].formCollapsed, true);
+});
 
 test('a new production conversation starts without results or video detail', () => {
   const state = createOrder(createDemoState());
@@ -78,7 +104,10 @@ test('submitting a complete order folds the form and begins the replication work
   assert.equal(order.formCollapsed, true);
   assert.equal(order.progress, 12);
   assert.equal(order.messages.at(-1).kind, 'progress');
-  assert.deepEqual(getMarketingFactoryViewModel(state).visiblePanes, ['sessions', 'conversation']);
+  assert.equal(order.candidates.length, 3);
+  assert.equal(order.panes.results, true);
+  assert.equal(order.panes.detail, false);
+  assert.deepEqual(getMarketingFactoryViewModel(state).visiblePanes, ['sessions', 'conversation', 'results']);
 });
 
 test('reopening configuration preserves generated candidates selected video and versions', () => {
@@ -129,19 +158,13 @@ test('saving reopened configuration replaces candidate slots without retaining a
   assert.equal(order.panes.detail, false);
 });
 
-test('the first previewable candidate opens results once while detail remains user controlled', () => {
+test('results open on submission and stay closed after a user closes them', () => {
   let state = submitOrder(createConfiguredOrder());
-  state = advanceOrder(state);
-  state = advanceOrder(state);
-  state = advanceOrder(state);
-
   let vm = getMarketingFactoryViewModel(state);
-  assert.equal(vm.activeOrder.candidates[0].status, 'previewable');
-  assert.equal(vm.activeOrder.pendingAction.type, 'missing_material');
   assert.deepEqual(vm.visiblePanes, ['sessions', 'conversation', 'results']);
 
   state = togglePanel(state, 'results', false);
-  state = advanceOrder(state);
+  state = advanceOrder(advanceOrder(advanceOrder(state)));
   vm = getMarketingFactoryViewModel(state);
   assert.deepEqual(vm.visiblePanes, ['sessions', 'conversation']);
   assert.equal(vm.activeOrder.resultsAutoOpened, true);
@@ -184,6 +207,38 @@ test('natural language updates the same structured order draft', () => {
   assert.equal(order.draft.candidateCount, 5);
   assert.equal(order.draft.goals.person, true);
   assert.equal(order.draft.goals.scene, true);
+});
+
+test('natural language can localize to Brazil and reset optional changes', () => {
+  let state = openReplicationTool(createDemoState(), 'natural-language');
+  state = sendConversationMessage(state, '投放巴西，生成 5 条，人物换成拉丁裔年轻女性');
+  let order = state.orders[state.activeOrderId];
+  assert.equal(order.draft.market, '巴西');
+  assert.equal(order.draft.language, '葡萄牙语');
+  assert.equal(order.draft.candidateCount, 5);
+  assert.equal(order.draft.goals.person, true);
+  assert.match(order.draft.personDescription, /拉丁裔年轻女性/);
+
+  state = sendConversationMessage(state, '其他都保持原视频');
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.draft.goals.person, false);
+  assert.equal(order.draft.goals.scene, false);
+  assert.equal(order.draft.goals.clip, false);
+  assert.equal(order.draft.goals.brand, false);
+});
+
+test('a preview revision is added to the same conversation without losing selection', () => {
+  let state = submitOrder(createConfiguredOrder());
+  const candidateId = state.orders[state.activeOrderId].candidates[0].id;
+  state = selectCandidate(state, candidateId);
+
+  state = sendPreviewRevision(state, candidateId, '前三秒商品露出提前');
+  const order = state.orders[state.activeOrderId];
+
+  assert.equal(order.selectedCandidateId, candidateId);
+  assert.equal(order.messages.at(-2).kind, 'revision');
+  assert.match(order.messages.at(-2).text, /前三秒商品露出提前/);
+  assert.match(order.messages.at(-1).text, /候选 01/);
 });
 
 test('production conversations keep drafts candidates and pane preferences isolated', () => {
