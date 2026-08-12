@@ -12,6 +12,7 @@ import {
   openReplicationTool,
   reopenOrderConfiguration,
   selectCandidate,
+  setCandidateView,
   submitOrder,
 } from '../marketing-factory-model.mjs';
 import { renderMarketingFactory } from '../marketing-factory-view.mjs';
@@ -108,7 +109,36 @@ test('submitting the form leaves a compact chat card and opens all candidate tas
   assert.match(html, /候选 01/);
   assert.match(html, /等待生成/);
   assert.match(html, /执行记录/);
+  assert.match(html, /aria-label="卡片视图"/);
+  assert.match(html, /aria-label="表格视图"/);
+  assert.doesNotMatch(html, /class="task-summary"/);
   assert.doesNotMatch(html, /aria-label="视频预览"/);
+});
+
+test('video management switches between card and table views without changing its candidates', () => {
+  let state = submitOrder(applyDemoPreset(openReplicationTool(createDemoState(), 'welcome-card')));
+  let html = render(state);
+
+  assert.match(html, /class="candidate-tasks candidate-card-view"/);
+  assert.equal((html.match(/data-action="select-candidate"/g) || []).length, 3);
+
+  state = setCandidateView(state, 'table');
+  html = render(state);
+  assert.match(html, /class="candidate-table"/);
+  assert.match(html, /<span>视频<\/span><span>状态<\/span><span>版本<\/span><span>时长<\/span>/);
+  assert.equal((html.match(/data-action="select-candidate"/g) || []).length, 3);
+});
+
+test('clicking any candidate opens its far-right status detail even before preview is ready', () => {
+  let state = submitOrder(applyDemoPreset(openReplicationTool(createDemoState(), 'welcome-card')));
+  const queuedCandidateId = state.orders[state.activeOrderId].candidates[1].id;
+  state = selectCandidate(state, queuedCandidateId);
+  const html = render(state);
+
+  assert.match(html, /aria-label="视频详情"/);
+  assert.match(html, /候选 02 · V1/);
+  assert.match(html, /等待开始生成/);
+  assert.doesNotMatch(html, new RegExp(`data-candidate-id="${queuedCandidateId}" disabled`));
 });
 
 test('reopened configuration preserves submitted values inside the same conversation', () => {
@@ -130,7 +160,7 @@ test('selecting a ready candidate opens the far-right preview and revision compo
   state = selectCandidate(state, candidateId);
   const html = render(state);
 
-  assert.match(html, /aria-label="视频预览"/);
+  assert.match(html, /aria-label="视频详情"/);
   assert.match(html, /候选 01 · V1/);
   assert.match(html, /复刻度 91/);
   assert.match(html, /id="preview-revision-form"/);

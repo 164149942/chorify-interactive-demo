@@ -56,6 +56,7 @@ function createBlankOrder(id, number) {
     },
     resultsAutoOpened: false,
     resultsManuallyClosed: false,
+    candidateView: 'card',
     selectedCandidateId: null,
     pendingAction: null,
     toolEntrySource: 'new-chat',
@@ -442,6 +443,14 @@ export function selectCandidate(state, candidateId) {
     order.selectedCandidateId = candidateId;
     order.panes.results = true;
     order.panes.detail = true;
+    return order;
+  });
+}
+
+export function setCandidateView(state, view) {
+  if (!['card', 'table'].includes(view)) return state;
+  return updateActiveOrder(state, (order) => {
+    order.candidateView = view;
     return order;
   });
 }

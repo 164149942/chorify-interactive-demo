@@ -15,6 +15,7 @@ import {
   selectCandidate,
   sendConversationMessage,
   sendPreviewRevision,
+  setCandidateView,
   submitOrder,
   toggleChangeGoal,
   togglePanel,
@@ -155,6 +156,11 @@ function handleClick(event) {
   }
   if (action === 'select-candidate') {
     state = selectCandidate(state, target.dataset.candidateId);
+    render();
+    return;
+  }
+  if (action === 'set-candidate-view') {
+    state = setCandidateView(state, target.dataset.view);
     render();
     return;
   }

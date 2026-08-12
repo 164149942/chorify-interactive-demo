@@ -18,6 +18,7 @@ import {
   selectCandidate,
   sendConversationMessage,
   sendPreviewRevision,
+  setCandidateView,
   submitOrder,
   toggleChangeGoal,
   togglePanel,
@@ -108,6 +109,20 @@ test('submitting a complete order folds the form and begins the replication work
   assert.equal(order.panes.results, true);
   assert.equal(order.panes.detail, false);
   assert.deepEqual(getMarketingFactoryViewModel(state).visiblePanes, ['sessions', 'conversation', 'results']);
+});
+
+test('candidate card and table view preference belongs to the active production conversation', () => {
+  let state = submitOrder(createConfiguredOrder());
+  const firstOrderId = state.activeOrderId;
+
+  assert.equal(state.orders[firstOrderId].candidateView, 'card');
+
+  state = setCandidateView(state, 'table');
+  assert.equal(state.orders[firstOrderId].candidateView, 'table');
+  assert.equal(state.orders['order-history-1'].candidateView, 'card');
+
+  const unchanged = setCandidateView(state, 'unsupported');
+  assert.deepEqual(unchanged, state);
 });
 
 test('reopening configuration preserves generated candidates selected video and versions', () => {
