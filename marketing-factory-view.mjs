@@ -96,7 +96,7 @@ function renderChatHome(vm) {
       ${renderSidebar(vm)}
       <section class="chat-stage">
         ${renderTopbar()}
-        <main class="chat-welcome">
+        <main class="chat-welcome chat-canvas">
           <div class="welcome-copy"><span class="welcome-logo">C</span><small>CHORIFY CREATION AGENT</small><h1>今天想推进哪件创作？</h1><p>直接说目标、上传素材，或选择一个结构化工具开始。Agent 会在同一会话中理解、执行并交付结果。</p></div>
           <div class="capability-cards">
             <button data-action="placeholder"><span>${icon('spark', 21)}</span><small>研究与策划</small><strong>研究一款产品的受众，并规划内容方向</strong><em>→</em></button>
@@ -111,7 +111,7 @@ function renderChatHome(vm) {
 
 function renderHomeComposer() {
   return `
-    <form class="welcome-composer" id="home-composer">
+    <form class="welcome-composer chat-primary-composer" id="home-composer">
       <textarea id="home-input" placeholder="描述你想要的图片或视频，@ 可引用项目资产…"></textarea>
       <div><span><button type="button" data-action="placeholder">＋</button><button type="button" data-action="open-replication-tool" data-source="composer-tool">${icon('video', 15)} 视频复刻</button></span><button class="send-button" type="submit">${icon('send')}</button></div>
     </form>`;
@@ -173,7 +173,7 @@ function renderPending(order) {
 
 function renderConversation(order) {
   return `
-    <main class="conversation-column" aria-label="AI 聊天会话">
+    <main class="conversation-column chat-canvas" aria-label="AI 聊天会话">
       <div class="conversation-agent"><span class="ai-avatar">AI</span><div><strong>Chorify 创作智能体</strong><small><i></i> 已连接当前会话</small></div><button data-action="placeholder">•••</button></div>
       <div class="conversation-scroll" data-scroll-region="conversation">
         <div class="conversation-lane">
@@ -183,7 +183,7 @@ function renderConversation(order) {
           ${renderPending(order)}
         </div>
       </div>
-      <form class="chat-composer conversation-composer" id="conversation-composer"><small>${icon('chat', 13)} 当前上下文：${escapeHtml(order.title)}</small><textarea id="conversation-input" placeholder="继续补充要求，或用自然语言修改上方配置…"></textarea><div><span><button type="button" data-action="placeholder">＋</button><button type="button" data-action="placeholder">@ 资产</button><button type="button" data-action="open-replication-tool" data-source="composer-tool">${icon('video', 15)} 视频复刻</button></span><button class="send-button" type="submit">${icon('send')}</button></div></form>
+      <form class="chat-composer conversation-composer chat-primary-composer" id="conversation-composer"><textarea id="conversation-input" placeholder="继续补充要求，或用自然语言修改上方配置…"></textarea><div><span><button type="button" data-action="placeholder">＋</button><button type="button" data-action="placeholder">@ 资产</button><button type="button" data-action="open-replication-tool" data-source="composer-tool">${icon('video', 15)} 视频复刻</button></span><button class="send-button" type="submit">${icon('send')}</button></div></form>
     </main>`;
 }
 

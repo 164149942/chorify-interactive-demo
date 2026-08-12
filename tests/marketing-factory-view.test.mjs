@@ -56,7 +56,7 @@ test('the replication form is an AI tool message inside the existing conversatio
     html,
     /class="conversation-lane"[\s\S]*class="chat-tool-message"[\s\S]*class="message-avatar"[^>]*>AI<[\s\S]*id="replication-config"/,
   );
-  assert.match(html, /class="chat-composer conversation-composer"/);
+  assert.match(html, /class="chat-composer conversation-composer chat-primary-composer"/);
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
 });
 
@@ -68,6 +68,22 @@ test('the form, messages, and composer share the original Chat width contract', 
   assert.match(css, /\.conversation-composer\s*\{[^}]*width:\s*min\(920px,\s*calc\(100% - 36px\)\)[^}]*margin:\s*0 auto 14px/s);
   assert.match(css, /\.chat-tool-message\s*\{[^}]*display:\s*flex[^}]*align-items:\s*flex-start/s);
   assert.match(css, /\.chat-tool-message \.replication-card\s*\{[^}]*max-width:\s*none[^}]*margin:\s*0/s);
+});
+
+test('opening video replication preserves the welcome canvas and composer visual contract', () => {
+  const home = render(createDemoState());
+  const conversation = render(openReplicationTool(createDemoState(), 'welcome-card'));
+  const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+
+  assert.match(home, /class="chat-welcome chat-canvas"/);
+  assert.match(conversation, /class="conversation-column chat-canvas"/);
+  assert.match(home, /class="welcome-composer chat-primary-composer"/);
+  assert.match(conversation, /class="chat-composer conversation-composer chat-primary-composer"/);
+  assert.doesNotMatch(conversation, /class="chat-composer conversation-composer chat-primary-composer"[^>]*><small>/);
+  assert.match(css, /--chat-canvas-background:\s*radial-gradient\(/);
+  assert.match(css, /\.chat-canvas\s*\{[^}]*background:\s*var\(--chat-canvas-background\)/s);
+  assert.match(css, /\.chat-primary-composer\s*\{[^}]*background:\s*#fff[^}]*box-shadow:\s*var\(--chat-composer-shadow\)/s);
+  assert.doesNotMatch(css, /\.conversation-column[^}]*background:\s*var\(--panel\)/s);
 });
 
 test('conditional replacement controls stay inside the chat form', () => {
