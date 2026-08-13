@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   advanceOrder,
+  advanceReferenceAnalysis,
   applyDemoPreset,
   approveCandidate,
   createDemoState,
@@ -13,12 +14,20 @@ import {
   reopenOrderConfiguration,
   selectCandidate,
   setCandidateView,
+  startReferenceAnalysis,
   submitOrder,
 } from '../marketing-factory-model.mjs';
 import { renderMarketingFactory } from '../marketing-factory-view.mjs';
 
 function render(state) {
   return renderMarketingFactory(getMarketingFactoryViewModel(state));
+}
+
+function createPlanState() {
+  let state = applyDemoPreset(openReplicationTool(createDemoState(), 'composer-tool'));
+  state = startReferenceAnalysis(state);
+  state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
+  return state;
 }
 
 test('new chat keeps the existing Chorify navigation and exposes video replication as a tool', () => {
@@ -34,19 +43,17 @@ test('new chat keeps the existing Chorify navigation and exposes video replicati
   assert.doesNotMatch(html, /营销工厂首页/);
 });
 
-test('opening the tool creates one chat and renders the structured form inline', () => {
+test('opening the tool creates one chat and renders the compact intake inline', () => {
   const html = render(openReplicationTool(createDemoState(), 'welcome-card'));
 
   assert.match(html, /aria-label="AI 聊天会话"/);
-  assert.match(html, /id="replication-config"/);
+  assert.match(html, /id="reference-intake-form"/);
   assert.match(html, /参考视频/);
-  assert.match(html, /目标商品/);
-  assert.match(html, /投放国家/);
-  assert.match(html, /商品将在原视频全部露出位置替换/);
-  assert.match(html, /人物/);
-  assert.match(html, /场景/);
-  assert.match(html, /视频片段/);
-  assert.match(html, /品牌 Logo/);
+  assert.match(html, /同商品跨国家本地化/);
+  assert.match(html, /替换为另一款商品/);
+  assert.match(html, /目标国家（选填）/);
+  assert.doesNotMatch(html, /目标商品/);
+  assert.doesNotMatch(html, /人物来源/);
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
 });
 
@@ -55,7 +62,7 @@ test('the replication form is an AI tool message inside the existing conversatio
 
   assert.match(
     html,
-    /class="conversation-lane"[\s\S]*class="chat-tool-message"[\s\S]*class="message-avatar"[^>]*>AI<[\s\S]*id="replication-config"/,
+    /class="conversation-lane"[\s\S]*class="chat-tool-message"[\s\S]*class="message-avatar"[^>]*>AI<[\s\S]*id="reference-intake-form"/,
   );
   assert.match(html, /class="chat-composer conversation-composer chat-primary-composer"/);
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
@@ -87,13 +94,14 @@ test('opening video replication preserves the welcome canvas and composer visual
   assert.doesNotMatch(css, /\.conversation-column[^}]*background:\s*var\(--panel\)/s);
 });
 
-test('conditional replacement controls stay inside the chat form', () => {
-  const html = render(applyDemoPreset(openReplicationTool(createDemoState(), 'composer-tool')));
+test('AI-detected conditional controls stay inside the second chat form', () => {
+  const html = render(createPlanState());
 
   assert.match(html, /人物来源/);
   assert.match(html, /AI 生成/);
   assert.match(html, /25—35 岁墨西哥女性/);
   assert.match(html, /Chorify Cup 品牌 Logo/);
+  assert.match(html, /参考视频分析完成/);
   assert.doesNotMatch(html, /场景替换说明/);
 });
 
@@ -101,9 +109,9 @@ test('submitting the form leaves a compact chat card and opens all candidate tas
   const state = submitOrder(applyDemoPreset(openReplicationTool(createDemoState(), 'welcome-card')));
   const html = render(state);
 
-  assert.match(html, /配置已确认/);
+  assert.match(html, /生产方案已确认/);
   assert.match(html, /重新打开配置/);
-  assert.doesNotMatch(html, /id="replication-config"/);
+  assert.doesNotMatch(html, /id="production-plan-form"/);
   assert.match(html, /aria-label="候选视频任务"/);
   assert.equal((html.match(/data-action="select-candidate"/g) || []).length, 3);
   assert.match(html, /候选 01/);
@@ -146,11 +154,11 @@ test('reopened configuration preserves submitted values inside the same conversa
   state = reopenOrderConfiguration(state);
   const html = render(state);
 
-  assert.match(html, /id="replication-config"/);
+  assert.match(html, /id="production-plan-form"/);
   assert.match(html, /TikTok 爆款榨汁杯视频\.mp4/);
   assert.match(html, /便携式榨汁杯 Pro/);
   assert.match(html, /取消修改/);
-  assert.match(html, /保存配置并重新生成/);
+  assert.match(html, /保存方案并重新生成/);
 });
 
 test('selecting a ready candidate opens the far-right preview and revision composer', () => {

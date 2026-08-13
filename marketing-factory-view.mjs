@@ -139,6 +139,37 @@ function renderSourceField(order, kind) {
     </section>`;
 }
 
+function renderReplicationMode(order) {
+  const options = [
+    ['same_product', '同商品跨国家本地化', '保留商品主体，调整语言、人物、场景与市场表达'],
+    ['replace_product', '替换为另一款商品', '分析完成后，再补充新商品与缺失素材'],
+    ['custom', '自定义调整', '先分析参考视频，再逐项选择要修改的对象'],
+  ];
+  return `<div class="mode-grid">${options.map(([value, title, description]) => `<button type="button" class="mode-option ${order.draft.replicationMode === value ? 'is-active' : ''}" data-action="set-replication-mode" data-value="${value}"><span>${order.draft.replicationMode === value ? icon('check', 15) : ''}</span><strong>${title}</strong><small>${description}</small></button>`).join('')}</div>`;
+}
+
+function renderReferenceIntake(order) {
+  return `
+    <form id="reference-intake-form" class="replication-card intake-card">
+      <header class="config-heading enterprise-heading"><div><span>${icon('video', 17)} 视频复刻 · 建立任务</span><h2>先分析，再配置生产方案</h2><p>这里只收集分析参考视频所需的最少信息。AI 识别完成后，再展示这条视频实际需要配置的项目。</p></div><button type="button" data-action="apply-preset">填入演示内容</button></header>
+      <div class="stage-rail"><span class="is-active"><b>1</b><em>提交参考视频</em></span><i></i><span><b>2</b><em>AI 分析与配置</em></span><i></i><span><b>3</b><em>确认并生产</em></span></div>
+      ${renderSourceField(order, 'reference')}
+      <section class="config-section ${order.validationErrors.includes('replicationMode') ? 'has-error' : ''}"><header><span>02</span><strong>这次为什么复刻</strong>${errorText(order, 'replicationMode')}</header>${renderReplicationMode(order)}</section>
+      <section class="config-section"><header><span>03</span><strong>已知信息</strong><small>可先跳过，分析后仍可补充</small></header><div class="intake-known-grid"><label><small>目标国家（选填）</small><select data-field="market"><option value="">分析后再选</option>${['墨西哥', '美国', '巴西', '泰国'].map((market) => `<option value="${market}" ${order.draft.market === market ? 'selected' : ''}>${market}</option>`).join('')}</select></label><label><small>补充说明（选填）</small><input data-field="brief" value="${escapeHtml(order.draft.brief)}" placeholder="例如：保留节奏，人物更年轻" /></label></div></section>
+      <footer class="config-footer intake-footer"><div><small>下一步不会开始生成视频</small><strong>预计 15 秒完成结构分析</strong></div><button class="primary" type="submit">开始分析参考视频 ${icon('chevron', 15)}</button></footer>
+    </form>`;
+}
+
+function renderAnalysisProgress(order) {
+  const steps = ['读取镜头与节奏', '识别商品、人物与场景', '生成动态生产配置'];
+  return `<article class="chat-tool-message"><div class="message-avatar">AI</div><div class="tool-message-body"><section class="replication-card analysis-card"><header><div><span class="analysis-pulse"></span><small>参考视频分析中</small><h2>${escapeHtml(order.draft.reference.name)}</h2><p>${escapeHtml(order.status)}，分析完成前不会创建视频任务。</p></div><strong>${order.analysis.progress}%</strong></header><div class="analysis-progress"><span style="width:${order.analysis.progress}%"></span></div><ol>${steps.map((label, index) => `<li class="${index < order.analysis.step ? 'is-done' : index === order.analysis.step ? 'is-running' : ''}"><b>${index < order.analysis.step ? '✓' : String(index + 1).padStart(2, '0')}</b><span>${label}</span><em>${index < order.analysis.step ? '已完成' : index === order.analysis.step ? '进行中' : '等待'}</em></li>`).join('')}</ol></section></div></article>`;
+}
+
+function renderAnalysisSummary(order) {
+  const summary = order.analysis.summary;
+  return `<section class="analysis-summary"><header><div><span>${icon('check', 16)} 参考视频分析完成</span><h3>AI 已把参考视频转成可配置的生产蓝图</h3></div><em>${summary.duration} · ${summary.shotCount} 个镜头</em></header><div class="analysis-metrics"><div><strong>${summary.productExposureCount}</strong><span>商品露出</span></div><div><strong>${summary.personCount}</strong><span>检测到人物</span></div><div><strong>${summary.sceneCount}</strong><span>主要场景</span></div><div><strong>${summary.textCount}</strong><span>文字/字幕段</span></div><div><strong>${summary.voiceLanguage}</strong><span>原口播语言</span></div></div></section>`;
+}
+
 function renderGoalDetail(order, goal) {
   if (goal === 'person') return `<div class="goal-detail"><div><strong>人物来源</strong><small>指定人物、上传照片，或让 AI 生成</small></div><div class="segmented">${[['library', '人物库'], ['upload', '上传照片'], ['ai', 'AI 生成']].map(([value, label]) => `<button type="button" data-action="set-person-mode" data-value="${value}" class="${order.draft.personMode === value ? 'is-active' : ''}">${label}</button>`).join('')}</div><textarea data-field="personDescription" placeholder="描述人物年龄、国家、气质和创作者类型">${escapeHtml(order.draft.personDescription)}</textarea></div>`;
   if (goal === 'scene') return `<div class="goal-detail"><div><strong>场景替换说明</strong><small>指定原视频中需要换掉的画面场景</small></div><textarea data-field="sceneInstruction" placeholder="例如：将厨房替换为墨西哥公寓早餐桌">${escapeHtml(order.draft.sceneInstruction)}</textarea></div>`;
@@ -148,20 +179,25 @@ function renderGoalDetail(order, goal) {
 }
 
 function renderConfiguration(order) {
+  const sameProduct = order.draft.replicationMode === 'same_product';
+  const replaceProduct = order.draft.replicationMode === 'replace_product';
+  const summary = order.analysis.summary;
   return `
-    <form id="replication-config" class="replication-card">
-      <header class="config-heading"><div><span>${icon('video', 17)} 视频复刻</span><h2>${order.editingConfiguration ? '重新配置复刻任务' : '先确认这次要怎么复刻'}</h2><p>结构化选项和自然语言会同步。确认后，当前会话将绑定一份视频复刻生产订单。</p></div><button type="button" data-action="apply-preset">填入演示配置</button></header>
-      ${renderSourceField(order, 'reference')}
-      ${renderSourceField(order, 'product')}
-      <section class="config-section ${order.validationErrors.includes('market') ? 'has-error' : ''}"><header><span>03</span><strong>投放国家与本地化</strong>${errorText(order, 'market')}</header><div class="market-row"><label><small>投放国家</small><select data-field="market"><option value="">请选择</option>${['墨西哥', '美国', '巴西', '泰国'].map((market) => `<option value="${market}" ${order.draft.market === market ? 'selected' : ''}>${market}</option>`).join('')}</select></label><div><small>自动确定</small><strong>${escapeHtml(order.draft.language || '语言待确定')}</strong><span>${escapeHtml(order.draft.subtitleMode || '字幕、画面文字与口播')}</span></div></div></section>
-      <section class="config-section"><header><span>04</span><strong>选择要调整的对象</strong><small>除所选内容外，其他都继承参考视频</small></header><div class="mandatory-product">${icon('check', 15)} 商品将在原视频全部露出位置替换</div><div class="goal-grid">${Object.entries(GOAL_LABELS).map(([goal, label]) => `<button type="button" class="${order.draft.goals[goal] ? 'is-active' : ''}" data-action="toggle-goal" data-goal="${goal}" ${goal === 'product' ? 'disabled' : ''}>${order.draft.goals[goal] ? icon('check', 14) : icon('plus', 14)} ${label}</button>`).join('')}</div><div class="goal-details">${order.visibleGoalSections.map((goal) => renderGoalDetail(order, goal)).join('')}</div></section>
+    <form id="production-plan-form" class="replication-card plan-card">
+      <header class="config-heading enterprise-heading"><div><span>${icon('spark', 17)} 视频复刻 · 生产配置</span><h2>${order.editingConfiguration ? '调整已确认的生产方案' : '确认这条视频怎么复刻'}</h2><p>以下选项由 AI 根据参考视频自动生成。只补充必要信息，再开始生产候选视频。</p></div><span class="analysis-complete-badge">分析完成</span></header>
+      <div class="stage-rail"><span class="is-done"><b>✓</b><em>提交参考视频</em></span><i></i><span class="is-active"><b>2</b><em>AI 分析与配置</em></span><i></i><span><b>3</b><em>确认并生产</em></span></div>
+      ${renderAnalysisSummary(order)}
+      <section class="plan-section ${order.validationErrors.includes('market') ? 'has-error' : ''}"><header><span>01</span><div><strong>目标市场与本地化</strong><small>国家将自动确定语言、字幕、画面文字和口播</small></div>${errorText(order, 'market')}</header><div class="market-row"><label><small>投放国家</small><select data-field="market"><option value="">请选择</option>${['墨西哥', '美国', '巴西', '泰国'].map((market) => `<option value="${market}" ${order.draft.market === market ? 'selected' : ''}>${market}</option>`).join('')}</select></label><div><small>自动应用</small><strong>${escapeHtml(order.draft.language || '选择国家后确定')}</strong><span>${escapeHtml(order.draft.subtitleMode || '字幕、画面文字与口播')}</span></div></div></section>
+      <section class="plan-section ${order.validationErrors.includes('product') ? 'has-error' : ''}"><header><span>02</span><div><strong>商品处理</strong><small>AI 已识别 ${summary.productExposureCount} 处商品露出</small></div>${errorText(order, 'product')}</header>${sameProduct ? `<div class="decision-row is-selected"><span>${icon('check', 17)}</span><div><strong>沿用参考视频中的商品</strong><small>保持商品主体，只处理市场语言与必要的包装文字</small></div><em>已选择</em></div>` : replaceProduct ? renderSourceField(order, 'product').replace('config-section', 'embedded-source') : `<div class="decision-row is-selected"><span>${icon('check', 17)}</span><div><strong>按分析结果自定义</strong><small>在下方逐项选择要替换的人物、场景、片段与品牌元素</small></div><em>已选择</em></div>`}<div class="material-advice"><span>建议补充，不阻塞生产</span><strong>${escapeHtml(summary.materialGaps[0].title)}</strong><p>${escapeHtml(summary.materialGaps[0].description)}</p><button type="button" data-action="pick-product-upload">${icon('upload', 14)} 补充商品资料</button></div></section>
+      <section class="plan-section"><header><span>03</span><div><strong>AI 检测到的可调整对象</strong><small>未选择的内容继承参考视频；后续仍可在对话中修改</small></div></header><div class="detected-grid"><div><span>人物 · ${summary.personCount} 位</span><button type="button" class="${order.draft.goals.person ? 'is-active' : ''}" data-action="toggle-goal" data-goal="person">${order.draft.goals.person ? '替换人物' : '沿用人物'}</button></div><div><span>场景 · ${summary.sceneCount} 个</span><button type="button" class="${order.draft.goals.scene ? 'is-active' : ''}" data-action="toggle-goal" data-goal="scene">${order.draft.goals.scene ? '替换场景' : '沿用场景'}</button></div><div><span>品牌/文字 · ${summary.textCount} 段</span><button type="button" class="${order.draft.goals.brand ? 'is-active' : ''}" data-action="toggle-goal" data-goal="brand">${order.draft.goals.brand ? '处理品牌' : '仅本地化文字'}</button></div></div><div class="goal-details">${order.visibleGoalSections.filter((goal) => ['person', 'scene', 'brand'].includes(goal)).map((goal) => renderGoalDetail(order, goal)).join('')}</div></section>
       <details class="advanced-config"><summary>高级设置 <span>比例、分辨率、创意强度等占位</span></summary><div>本版先确认结构与交互，具体模型参数后续补充。</div></details>
-      <footer class="config-footer"><div><strong>候选数量</strong><div class="segmented">${[1, 3, 5].map((count) => `<button type="button" data-action="set-candidate-count" data-value="${count}" class="${order.draft.candidateCount === count ? 'is-active' : ''}">${count} 条</button>`).join('')}</div></div><span>${order.editingConfiguration ? '<button type="button" class="secondary" data-action="cancel-configuration-edit">取消修改</button>' : ''}<button class="primary" type="submit">${order.editingConfiguration ? '保存配置并重新生成' : '确认配置并开始复刻'} ${icon('chevron', 15)}</button></span></footer>
+      <footer class="config-footer"><div><strong>候选数量</strong><div class="segmented">${[1, 3, 5].map((count) => `<button type="button" data-action="set-candidate-count" data-value="${count}" class="${order.draft.candidateCount === count ? 'is-active' : ''}">${count} 条</button>`).join('')}</div></div><span>${order.editingConfiguration ? '<button type="button" class="secondary" data-action="cancel-configuration-edit">取消修改</button>' : ''}<button class="primary" type="submit">${order.editingConfiguration ? '保存方案并重新生成' : '确认生产方案并开始复刻'} ${icon('chevron', 15)}</button></span></footer>
     </form>`;
 }
 
 function renderConfigSummary(order) {
-  return `<article class="config-summary"><div><span>${icon('check', 15)} 配置已确认</span><strong>${escapeHtml(order.draft.reference.name)} → ${escapeHtml(order.draft.product.name)}</strong><p>${escapeHtml(order.draft.market)} · ${escapeHtml(order.draft.language)} · ${order.draft.candidateCount} 条候选</p></div><button data-action="reopen-configuration">重新打开配置</button></article>`;
+  const product = order.draft.replicationMode === 'same_product' ? '沿用原商品' : order.draft.product.name || '自定义调整';
+  return `<article class="config-summary"><div><span>${icon('check', 15)} 生产方案已确认</span><strong>${escapeHtml(order.draft.reference.name)} · ${escapeHtml(product)}</strong><p>${escapeHtml(order.draft.market)} · ${escapeHtml(order.draft.language)} · ${order.draft.candidateCount} 条候选</p></div><button data-action="reopen-configuration">重新打开配置</button></article>`;
 }
 
 function renderConfigurationMessage(order) {
@@ -181,7 +217,10 @@ function renderConversation(order) {
         <div class="conversation-lane">
           <div class="context-bar"><span>当前任务</span><strong>${escapeHtml(order.title)}</strong><em>${escapeHtml(order.status)}</em></div>
           ${order.messages.map(renderMessage).join('')}
-          ${order.phase === 'draft' || order.editingConfiguration ? renderConfigurationMessage(order) : renderConfigSummary(order)}
+          ${order.phase === 'intake' ? `<article class="chat-tool-message"><div class="message-avatar">AI</div><div class="tool-message-body">${renderReferenceIntake(order)}</div></article>` : ''}
+          ${order.phase === 'analyzing' ? renderAnalysisProgress(order) : ''}
+          ${order.phase === 'plan' || order.editingConfiguration ? renderConfigurationMessage(order) : ''}
+          ${['running', 'review'].includes(order.phase) && !order.editingConfiguration ? renderConfigSummary(order) : ''}
           ${renderPending(order)}
         </div>
       </div>

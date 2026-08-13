@@ -1,5 +1,6 @@
 import {
   advanceOrder,
+  advanceReferenceAnalysis,
   applyDemoPreset,
   approveCandidate,
   createDemoState,
@@ -11,11 +12,13 @@ import {
   requestCandidateRevision,
   reopenOrderConfiguration,
   cancelOrderConfigurationEdit,
+  confirmProductionPlan,
   resolveMissingMaterial,
   selectCandidate,
   sendConversationMessage,
   sendPreviewRevision,
   setCandidateView,
+  startReferenceAnalysis,
   submitOrder,
   toggleChangeGoal,
   togglePanel,
@@ -59,11 +62,15 @@ function scheduleNextProgress(delay = 1250) {
   clearProgressTimer();
   progressTimer = window.setTimeout(() => {
     const before = activeOrder();
-    if (!before || before.phase !== 'running') return;
-    const priorStep = before.progressStep;
-    state = advanceOrder(state);
+    if (!before || !['analyzing', 'running'].includes(before.phase)) return;
+    const priorStep = before.phase === 'analyzing' ? before.analysis.step : before.progressStep;
+    state = before.phase === 'analyzing' ? advanceReferenceAnalysis(state) : advanceOrder(state);
     render({ scrollConversation: true });
     const after = activeOrder();
+    if (after?.phase === 'analyzing' && after.analysis.step !== priorStep) {
+      scheduleNextProgress(900);
+      return;
+    }
     if (after?.phase === 'running' && !after.pendingAction && after.progressStep !== priorStep) {
       scheduleNextProgress();
     } else if (after?.phase === 'running' && after.pendingAction && after.progressStep < 3) {
@@ -144,6 +151,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (action === 'set-replication-mode') {
+    updateTextField('replicationMode', target.dataset.value);
+    render();
+    return;
+  }
   if (action === 'set-candidate-count') {
     updateTextField('candidateCount', Number(target.dataset.value));
     render();
@@ -199,13 +211,22 @@ function handleClick(event) {
 }
 
 function handleSubmit(event) {
-  if (event.target.id === 'replication-config') {
+  if (event.target.id === 'reference-intake-form') {
     event.preventDefault();
-    state = submitOrder(state);
+    state = startReferenceAnalysis(state);
+    const order = activeOrder();
+    render({ scrollConversation: true });
+    if (order?.phase === 'analyzing') scheduleNextProgress(700);
+    else showNotice('请先补充参考视频，并选择本次复刻目的。');
+    return;
+  }
+  if (event.target.id === 'production-plan-form') {
+    event.preventDefault();
+    state = confirmProductionPlan(state);
     const order = activeOrder();
     render({ scrollConversation: true });
     if (order?.phase === 'running') scheduleNextProgress();
-    else showNotice('请先补充参考视频、目标商品和投放国家。');
+    else showNotice(order?.draft.replicationMode === 'replace_product' ? '请选择目标商品，并确认投放国家。' : '请选择投放国家。');
     return;
   }
   if (event.target.id === 'conversation-composer') {
@@ -249,7 +270,7 @@ function handleChange(event) {
 
 function handleInput(event) {
   const field = event.target.dataset.field;
-  if (!field || event.target.tagName !== 'TEXTAREA') return;
+  if (!field || !['TEXTAREA', 'INPUT'].includes(event.target.tagName)) return;
   updateTextField(field, event.target.value);
 }
 
