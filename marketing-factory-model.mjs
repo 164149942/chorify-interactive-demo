@@ -15,12 +15,14 @@ function createDraft() {
   return {
     reference: { source: '', name: '' },
     product: { source: '', name: '' },
+    replicationMode: '',
+    brief: '',
     market: '',
     language: '',
     subtitleMode: '',
     candidateCount: 3,
     goals: {
-      product: true,
+      product: false,
       person: false,
       scene: false,
       clip: false,
@@ -39,8 +41,8 @@ function createBlankOrder(id, number) {
     id,
     title: `新营销生产 ${number}`,
     subtitle: '等待配置复刻任务',
-    status: '草稿',
-    phase: 'draft',
+    status: '等待参考视频',
+    phase: 'intake',
     progress: 0,
     progressStep: 0,
     formCollapsed: false,
@@ -48,6 +50,12 @@ function createBlankOrder(id, number) {
     submittedDraft: null,
     validationErrors: [],
     draft: createDraft(),
+    analysis: {
+      status: 'idle',
+      step: 0,
+      progress: 0,
+      summary: null,
+    },
     panes: {
       sessions: true,
       conversation: true,
@@ -66,7 +74,7 @@ function createBlankOrder(id, number) {
         id: `${id}-welcome`,
         role: 'assistant',
         kind: 'message',
-        text: '把参考视频、目标商品和投放国家告诉我。我会先锁定复刻范围，再开始生成候选视频。',
+        text: '先给我参考视频，并告诉我这次是同商品本地化、替换新商品，还是自定义调整。我会先分析视频，再生成需要你确认的生产方案。',
       },
     ],
     updatedLabel: '刚刚',
@@ -82,10 +90,17 @@ function createSeedOrder({ id, title, market, product, status, phase, readyCount
   order.progress = phase === 'review' ? 100 : 64;
   order.progressStep = phase === 'review' ? 4 : 3;
   order.formCollapsed = true;
+  order.analysis = {
+    status: 'completed',
+    step: 3,
+    progress: 100,
+    summary: createReferenceAnalysisSummary(),
+  };
   order.draft = {
     ...createDraft(),
     reference: { source: 'history', name: '参考爆款营销视频.mp4' },
     product: { source: 'library', name: product },
+    replicationMode: 'replace_product',
     market,
     ...MARKET_LOCALIZATION[market],
   };
@@ -189,7 +204,7 @@ export function openReplicationTool(state, source = 'tool') {
   }
   return updateActiveOrder(state, (order) => {
     order.toolEntrySource = source;
-    if (order.phase === 'draft') order.formCollapsed = false;
+    if (order.phase === 'intake' || order.phase === 'plan') order.formCollapsed = false;
     return order;
   });
 }
@@ -211,8 +226,12 @@ export function goHome(state) {
 
 export function updateOrderDraft(state, patch) {
   return updateActiveOrder(state, (order) => {
-    if (order.phase !== 'draft' && !order.editingConfiguration) return order;
+    if (!['intake', 'plan'].includes(order.phase) && !order.editingConfiguration) return order;
     order.draft = { ...order.draft, ...clone(patch) };
+    if (Object.hasOwn(patch, 'replicationMode')) {
+      order.draft.goals.product = patch.replicationMode === 'replace_product';
+      if (patch.replicationMode !== 'replace_product') order.validationErrors = order.validationErrors.filter((field) => field !== 'product');
+    }
     if (Object.hasOwn(patch, 'market')) {
       const localization = MARKET_LOCALIZATION[patch.market] || { language: '', subtitleMode: '' };
       order.draft.language = localization.language;
@@ -226,7 +245,7 @@ export function updateOrderDraft(state, patch) {
 export function toggleChangeGoal(state, goal) {
   if (!GOAL_ORDER.includes(goal) || goal === 'product') return state;
   return updateActiveOrder(state, (order) => {
-    if (order.phase !== 'draft' && !order.editingConfiguration) return order;
+    if (!['intake', 'plan'].includes(order.phase) && !order.editingConfiguration) return order;
     order.draft.goals[goal] = !order.draft.goals[goal];
     return order;
   });
@@ -234,13 +253,15 @@ export function toggleChangeGoal(state, goal) {
 
 export function applyDemoPreset(state) {
   return updateActiveOrder(state, (order) => {
-    if (order.phase !== 'draft') return order;
+    if (order.phase !== 'intake') return order;
     order.title = '墨西哥榨汁杯爆款复刻';
     order.subtitle = '墨西哥 · 便携式榨汁杯';
     order.draft = {
       ...createDraft(),
       reference: { source: 'upload', name: 'TikTok 爆款榨汁杯视频.mp4' },
       product: { source: 'library', name: '便携式榨汁杯 Pro' },
+      replicationMode: 'replace_product',
+      brief: '保持原视频节奏，替换为新商品并完成墨西哥市场本地化。',
       market: '墨西哥',
       ...MARKET_LOCALIZATION.墨西哥,
       candidateCount: 3,
@@ -260,25 +281,105 @@ export function applyDemoPreset(state) {
   });
 }
 
-export function submitOrder(state) {
+function createReferenceAnalysisSummary() {
+  return {
+    duration: '00:28',
+    shotCount: 12,
+    productExposureCount: 5,
+    personCount: 1,
+    sceneCount: 3,
+    textCount: 8,
+    voiceLanguage: '英语',
+    productClarity: '主体清晰，包装文字局部偏小',
+    materialGaps: [
+      {
+        level: 'recommended',
+        title: '商品包装正面高清图',
+        description: '用于本地化包装文字与近景镜头；缺失时可沿用参考视频画面，不阻塞生产。',
+      },
+    ],
+  };
+}
+
+export function startReferenceAnalysis(state) {
   return updateActiveOrder(state, (order) => {
-    if (order.phase !== 'draft' && !order.editingConfiguration) return order;
-    const wasEditing = order.editingConfiguration;
+    if (order.phase !== 'intake') return order;
     const missing = [];
     if (!order.draft.reference.name) missing.push('reference');
-    if (!order.draft.product.name) missing.push('product');
+    if (!order.draft.replicationMode) missing.push('replicationMode');
+    order.validationErrors = missing;
+    if (missing.length) return order;
+
+    order.phase = 'analyzing';
+    order.status = '正在分析参考视频';
+    order.formCollapsed = true;
+    order.analysis = { status: 'running', step: 0, progress: 18, summary: null };
+    order.panes.results = false;
+    order.panes.detail = false;
+    appendMessage(order, {
+      role: 'user',
+      kind: 'summary',
+      text: `分析参考视频：${order.draft.reference.name}。复刻目的：${order.draft.replicationMode === 'same_product' ? '同商品跨国家本地化' : order.draft.replicationMode === 'replace_product' ? '替换为另一款商品' : '自定义调整'}。`,
+    });
+    appendMessage(order, {
+      role: 'assistant',
+      kind: 'progress',
+      text: '正在读取镜头结构、商品露出、人物、场景、字幕和口播。分析完成后，我会只展示这条视频实际需要配置的项目。',
+      progress: 18,
+    });
+    return order;
+  });
+}
+
+export function advanceReferenceAnalysis(state) {
+  return updateActiveOrder(state, (order) => {
+    if (order.phase !== 'analyzing') return order;
+    if (order.analysis.step === 0) {
+      order.analysis.step = 1;
+      order.analysis.progress = 48;
+      order.status = '正在识别可替换对象';
+      return order;
+    }
+    if (order.analysis.step === 1) {
+      order.analysis.step = 2;
+      order.analysis.progress = 78;
+      order.status = '正在生成生产配置';
+      return order;
+    }
+    order.analysis = { status: 'completed', step: 3, progress: 100, summary: createReferenceAnalysisSummary() };
+    order.phase = 'plan';
+    order.status = '生产方案待确认';
+    order.formCollapsed = false;
+    order.draft.goals.person = order.analysis.summary.personCount > 0;
+    order.draft.goals.brand = order.analysis.summary.textCount > 0;
+    appendMessage(order, {
+      role: 'assistant',
+      kind: 'result',
+      text: `分析完成：共 ${order.analysis.summary.shotCount} 个镜头、${order.analysis.summary.productExposureCount} 处商品露出、${order.analysis.summary.personCount} 位人物和 ${order.analysis.summary.sceneCount} 个主要场景。请确认动态生产方案。`,
+    });
+    return order;
+  });
+}
+
+export function confirmProductionPlan(state) {
+  return updateActiveOrder(state, (order) => {
+    if (order.phase !== 'plan' && !order.editingConfiguration) return order;
+    const wasEditing = order.editingConfiguration;
+    const missing = [];
     if (!order.draft.market) missing.push('market');
+    if (order.draft.replicationMode === 'replace_product' && !order.draft.product.name) missing.push('product');
     order.validationErrors = missing;
     if (missing.length) return order;
 
     order.phase = 'running';
-    order.status = '正在理解参考视频';
+    order.status = '正在创建候选视频';
     order.progress = 12;
     order.progressStep = 0;
     order.formCollapsed = true;
     order.editingConfiguration = false;
     order.submittedDraft = clone(order.draft);
-    order.subtitle = `${order.draft.market} · ${order.draft.product.name}`;
+    const productLabel = order.draft.replicationMode === 'same_product' ? '沿用原商品' : order.draft.product.name || '按自定义方案';
+    order.subtitle = `${order.draft.market} · ${productLabel}`;
     order.candidates = createCandidateSlots(order.id, order.draft.candidateCount);
     order.selectedCandidateId = null;
     order.pendingAction = null;
@@ -289,23 +390,32 @@ export function submitOrder(state) {
     appendMessage(order, {
       role: 'user',
       kind: 'summary',
-      text: wasEditing
-        ? `已更新复刻配置：${order.draft.reference.name} → ${order.draft.product.name}，投放 ${order.draft.market}，重新生成 ${order.draft.candidateCount} 条。`
-        : `确认复刻：${order.draft.reference.name} → ${order.draft.product.name}，投放 ${order.draft.market}，生成 ${order.draft.candidateCount} 条。`,
+      text: `${wasEditing ? '更新' : '确认'}生产方案：${productLabel}，投放 ${order.draft.market}，生成 ${order.draft.candidateCount} 条候选视频。`,
     });
     appendMessage(order, {
       role: 'assistant',
       kind: 'progress',
-      text: '正在读取参考视频结构、商品出现位置、人物、字幕和场景。',
+      text: '生产方案已锁定，正在按参考视频的镜头顺序建立候选视频。',
       progress: 12,
     });
     return order;
   });
 }
 
+// 保留给既有演示测试和历史入口的一键兼容路径；真实 UI 使用两个明确动作。
+export function submitOrder(state) {
+  let next = state;
+  const order = next.activeOrderId ? next.orders[next.activeOrderId] : null;
+  if (order?.phase === 'intake') {
+    next = startReferenceAnalysis(next);
+    while (next.orders[next.activeOrderId]?.phase === 'analyzing') next = advanceReferenceAnalysis(next);
+  }
+  return confirmProductionPlan(next);
+}
+
 export function reopenOrderConfiguration(state) {
   return updateActiveOrder(state, (order) => {
-    if (order.phase === 'draft' || order.editingConfiguration) return order;
+    if (['intake', 'plan'].includes(order.phase) || order.editingConfiguration) return order;
     order.submittedDraft ||= clone(order.draft);
     order.draft = clone(order.submittedDraft);
     order.editingConfiguration = true;
@@ -527,7 +637,7 @@ export function sendConversationMessage(state, text) {
   if (!cleanText) return state;
   return updateActiveOrder(state, (order) => {
     appendMessage(order, { role: 'user', kind: 'message', text: cleanText });
-    if (order.phase === 'draft' || order.editingConfiguration) {
+    if (['intake', 'plan'].includes(order.phase) || order.editingConfiguration) {
       const markets = Object.keys(MARKET_LOCALIZATION);
       const market = markets.find((item) => cleanText.includes(item));
       if (market) {

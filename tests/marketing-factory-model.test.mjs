@@ -61,7 +61,7 @@ test('a new production conversation starts without results or video detail', () 
 
   assert.equal(vm.page, 'workbench');
   assert.deepEqual(vm.visiblePanes, ['sessions', 'conversation']);
-  assert.equal(vm.activeOrder.phase, 'draft');
+  assert.equal(vm.activeOrder.phase, 'intake');
   assert.equal(vm.activeOrder.formCollapsed, false);
 });
 
@@ -72,13 +72,13 @@ test('country selection derives localization while unselected goals inherit the 
   const order = state.orders[state.activeOrderId];
   assert.equal(order.draft.language, '西班牙语');
   assert.equal(order.draft.subtitleMode, '西班牙语字幕');
-  assert.equal(order.draft.goals.product, true);
+  assert.equal(order.draft.goals.product, false);
   assert.equal(order.draft.goals.scene, false);
 });
 
-test('product replacement is mandatory and optional goals control conditional sections', () => {
+test('product replacement becomes mandatory only when that replication mode is selected', () => {
   let state = createOrder(createDemoState());
-  state = toggleChangeGoal(state, 'product');
+  state = updateOrderDraft(state, { replicationMode: 'replace_product' });
   assert.equal(state.orders[state.activeOrderId].draft.goals.product, true);
 
   state = toggleChangeGoal(state, 'person');
@@ -87,13 +87,13 @@ test('product replacement is mandatory and optional goals control conditional se
   assert.deepEqual(vm.activeOrder.visibleGoalSections, ['product', 'person', 'scene']);
 });
 
-test('incomplete configuration stays editable and exposes concrete missing fields', () => {
+test('incomplete intake stays editable and exposes only analysis prerequisites', () => {
   let state = createOrder(createDemoState());
   state = submitOrder(state);
 
   const order = state.orders[state.activeOrderId];
-  assert.equal(order.phase, 'draft');
-  assert.deepEqual(order.validationErrors, ['reference', 'product', 'market']);
+  assert.equal(order.phase, 'intake');
+  assert.deepEqual(order.validationErrors, ['reference', 'replicationMode']);
   assert.equal(order.formCollapsed, false);
 });
 
