@@ -14,6 +14,7 @@ import {
   submitReplicationIntent,
   confirmReplicationIntent,
   updateOrderDraft,
+  updateIntentStrategy,
   updateReplacementMapping,
   updatePlanFromNaturalLanguage,
   reopenOrderConfiguration,
@@ -222,6 +223,33 @@ test('the first inline form captures a replication intent with tri-state choices
   assert.match(html, /AI 理解/);
   assert.match(html, /分析视频并生成替换清单/);
   assert.match(html, /data-action="confirm-replication-intent"/);
+});
+
+test('first-form AI strategy is presented as a judgment choice while form-two wording stays separate', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateIntentStrategy(state, 'person', 'ai');
+  const html = render(state);
+
+  assert.match(html, /data-action="set-intent-strategy" data-group="person" data-value="ai">交给 AI 判断/);
+  assert.doesNotMatch(html, /data-action="set-intent-strategy" data-group="person" data-value="ai">AI 生成/);
+});
+
+test('collapsed intent summary shortens the AI decision without changing the second form option', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    market: '墨西哥',
+  });
+  state = updateIntentStrategy(state, 'person', 'ai');
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
+  const html = render(state);
+  const summary = html.match(/<article class="intent-summary">[\s\S]*?<\/article>/)?.[0] || '';
+
+  assert.match(summary, /人物AI 判断/);
+  assert.match(html, /data-action="set-replacement-strategy" data-group="person" data-value="ai">AI 生成/);
 });
 
 test('first-form shortcuts expose no-change, country-only, product-only, and country-plus-product fields', () => {

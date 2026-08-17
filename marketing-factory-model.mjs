@@ -93,7 +93,18 @@ function updateIntentFromLegacyPatch(order, patch) {
 function createUnderstandingSummary(intent) {
   const referenceLabel = intent.reference.name || '尚未提供参考视频';
   const countryLabel = intent.targetCountry || '尚未指定目标国家';
-  return `参考视频：${referenceLabel}；目标市场：${countryLabel}；人物${intent.strategies.person}、场景${intent.strategies.scene}、片段${intent.strategies.clip}。`;
+  const groupLabels = { person: '人物', scene: '场景', clip: '片段' };
+  const groupsFor = (strategy) => Object.entries(groupLabels)
+    .filter(([group]) => intent.strategies[group] === strategy)
+    .map(([, label]) => label)
+    .join('、') || '无';
+  const conflictLabels = {
+    same_product_with_target_product: '同商品本地化不能同时指定目标商品',
+  };
+  const conflicts = getIntentConflicts(intent)
+    .map((conflict) => conflictLabels[conflict] || '存在待处理冲突')
+    .join('、') || '无';
+  return `参考视频：${referenceLabel}；目标市场：${countryLabel}；必须更改：${groupsFor('replace')}；必须保持：${groupsFor('keep')}；交给 AI 判断：${groupsFor('ai')}；存在冲突：${conflicts}。`;
 }
 
 function getIntentConflicts(intent) {

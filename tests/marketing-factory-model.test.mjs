@@ -408,6 +408,25 @@ test('intent natural language updates the first form without starting analysis',
   assert.equal(order.intentDraft.strategies.clip, 'keep');
 });
 
+test('intent understanding groups replace keep AI and conflicts into readable decisions', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    market: '墨西哥',
+    product: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  state = updateIntentStrategy(state, 'person', 'ai');
+  state = updateIntentStrategy(state, 'scene', 'replace');
+  const summary = state.orders[state.activeOrderId].intentDraft.understandingSummary;
+
+  assert.match(summary, /必须更改：场景/);
+  assert.match(summary, /必须保持：片段/);
+  assert.match(summary, /交给 AI 判断：人物/);
+  assert.match(summary, /存在冲突：同商品本地化不能同时指定目标商品/);
+  assert.doesNotMatch(summary, /人物ai|场景replace|片段keep/);
+});
+
 test('switching or clearing a shortcut cannot leave a hidden target product in an original-product path', () => {
   let state = openReplicationTool(createDemoState(), 'welcome-card');
   state = updateOrderDraft(state, {

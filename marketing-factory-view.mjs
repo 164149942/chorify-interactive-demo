@@ -150,7 +150,7 @@ function renderReplicationMode(order) {
 
 function renderIntentStrategies(order) {
   const labels = { person: '人物', scene: '场景', clip: '片段' };
-  return `<section class="intent-section"><header><strong>可调整对象</strong><small>未处理的对象会沿用参考视频</small></header><div class="intent-strategy-matrix">${Object.entries(labels).map(([group, label]) => `<div><strong>${label}</strong><span>${['keep', 'replace', 'ai'].map((value) => `<button type="button" class="${order.intentDraft.strategies[group] === value ? 'is-active' : ''}" data-action="set-intent-strategy" data-group="${group}" data-value="${value}">${value === 'keep' ? '保留' : value === 'replace' ? '替换' : 'AI 生成'}</button>`).join('')}</span></div>`).join('')}</div></section>`;
+  return `<section class="intent-section"><header><strong>可调整对象</strong><small>未处理的对象会沿用参考视频</small></header><div class="intent-strategy-matrix">${Object.entries(labels).map(([group, label]) => `<div><strong>${label}</strong><span>${['keep', 'replace', 'ai'].map((value) => `<button type="button" class="${order.intentDraft.strategies[group] === value ? 'is-active' : ''}" data-action="set-intent-strategy" data-group="${group}" data-value="${value}">${value === 'keep' ? '保留' : value === 'replace' ? '替换' : '交给 AI 判断'}</button>`).join('')}</span></div>`).join('')}</div></section>`;
 }
 
 function renderIntentReview(order) {
@@ -187,7 +187,7 @@ function renderAnalysisProgress(order) {
 function renderIntentSummary(order) {
   const intent = order.intentDraft;
   const mode = intent.quickMode === 'same_product' ? '同商品，换投放国家' : intent.quickMode === 'replace_product' ? '同国家，换商品' : intent.quickMode === 'custom' ? '商品和国家都更换' : '沿用商品与国家';
-  const label = (value) => ({ keep: '保留', replace: '替换', ai: 'AI 生成' }[value] || '保留');
+  const label = (value) => ({ keep: '保留', replace: '替换', ai: 'AI 判断' }[value] || '保留');
   return `<article class="intent-summary"><span>${icon('check', 14)} 已确认复刻意图</span><strong>${escapeHtml(intent.reference.name)}</strong><small>${mode} · 人物${label(intent.strategies.person)} · 场景${label(intent.strategies.scene)} · 片段${label(intent.strategies.clip)}</small></article>`;
 }
 
