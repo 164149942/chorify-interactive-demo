@@ -480,6 +480,8 @@ export function submitReplicationIntent(state) {
 export function confirmReplicationIntent(state) {
   const reviewed = updateActiveOrder(state, (order) => {
     if (order.phase !== 'intent_review') return order;
+    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
     order.intentDraft.blockingItems = [
       ...(order.intentDraft.reference.name ? [] : ['reference']),
       ...order.intentDraft.conflicts,

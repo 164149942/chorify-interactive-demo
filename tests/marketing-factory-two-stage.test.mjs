@@ -125,6 +125,26 @@ test('intent review blocks analysis until its required reference and conflict ar
   assert.equal(activeOrder(state).intentDraft.quickMode, '');
 });
 
+test('intent confirmation recomputes a conflict introduced during review before analysis starts', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  state = submitReplicationIntent(state);
+  assert.equal(activeOrder(state).phase, 'intent_review');
+  assert.deepEqual(activeOrder(state).intentDraft.conflicts, []);
+
+  state = updateOrderDraft(state, {
+    replicationMode: 'same_product',
+    product: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  state = confirmReplicationIntent(state);
+  const order = activeOrder(state);
+
+  assert.equal(order.phase, 'intent_review');
+  assert.deepEqual(order.intentDraft.conflicts, ['same_product_with_target_product']);
+  assert.deepEqual(order.intentDraft.blockingItems, ['same_product_with_target_product']);
+  assert.match(order.intentDraft.understandingSummary, /参考爆款视频/);
+});
+
 test('analysis builds independent mapping groups and a product rule covers every product exposure', () => {
   let state = completeAnalysis(createSameProductIntake());
   state = applyReplacementGroupRule(state, 'product', {
