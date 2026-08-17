@@ -232,6 +232,7 @@ function renderConfiguration(order) {
   const objectTargetLabel = (object, fallbackTarget) => {
     const named = typeof object.target === 'string' ? object.target : object.target?.name;
     if (named) return named;
+    if (object.target?.placeholder) return object.target.placeholder;
     if (!object.strategy && ['person', 'scene', 'clip'].includes(object.group)) return `沿用分组规则：${fallbackTarget}`;
     if (object.group === 'product' && plan.product.inheritReference) return fallbackTarget;
     if (object.group === 'localization' && plan.localization.inheritReference) return fallbackTarget;
@@ -253,7 +254,7 @@ function renderConfiguration(order) {
         ? '保持原对象'
         : object.strategy === 'ai'
           ? '由 AI 生成匹配内容'
-          : object.target?.source || '待补充目标素材';
+          : object.target?.source || object.target?.placeholder || '待补充目标素材';
     return `<div class="mapping-object-row" data-mapping-object-id="${escapeHtml(object.id)}"><div class="mapping-row"><span class="mapping-source"><i class="mapping-thumb">${icon(object.group === 'product' ? 'image' : 'video', 13)}</i><span><small>原对象</small><strong>${escapeHtml(source.label || '未命名对象')}</strong><small>${escapeHtml([range, shots].filter(Boolean).join(' · '))}</small></span></span><b>→</b><span class="mapping-target"><small>目标对象</small><strong>${escapeHtml(objectTargetLabel(object, fallbackTarget))}</strong><small>${escapeHtml(targetHint)}</small></span></div>${controls}</div>`;
   };
   return `

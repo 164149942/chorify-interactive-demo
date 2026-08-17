@@ -690,6 +690,32 @@ test('replacement plan exposes deterministic object mappings and allows one obje
   assert.equal(plan.scene.strategy, 'keep');
 });
 
+test('row-level strategy changes reset every object target to a strategy-consistent value', () => {
+  let state = createPlanOrder();
+  const cases = [
+    ['person', 'person-01', /人物/],
+    ['scene', 'scene-kitchen', /场景/],
+    ['clip', 'clip-01', /片段/],
+  ];
+
+  for (const [group, objectId, targetPattern] of cases) {
+    state = updateReplacementMapping(state, group, { objectId, objectPatch: { strategy: 'replace' } });
+    let object = state.orders[state.activeOrderId].replacementPlan.objects.find((item) => item.id === objectId);
+    assert.equal(object.strategy, 'replace');
+    assert.equal(object.target.name, '');
+    assert.match(object.target.placeholder, targetPattern);
+    assert.notEqual(object.target.placeholder, `保留原${group === 'person' ? '人物' : group === 'scene' ? '场景' : '片段'}`);
+
+    state = updateReplacementMapping(state, group, { objectId, objectPatch: { strategy: 'ai' } });
+    object = state.orders[state.activeOrderId].replacementPlan.objects.find((item) => item.id === objectId);
+    assert.deepEqual(object.target, { source: 'ai', name: 'AI 生成匹配内容' });
+
+    state = updateReplacementMapping(state, group, { objectId, objectPatch: { strategy: 'keep' } });
+    object = state.orders[state.activeOrderId].replacementPlan.objects.find((item) => item.id === objectId);
+    assert.deepEqual(object.target, { source: 'reference', name: '沿用参考视频' });
+  }
+});
+
 test('natural language does not silently overwrite an explicit first-form strategy and produces a typed gate', () => {
   let state = openReplicationTool(createDemoState(), 'welcome-card');
   state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });

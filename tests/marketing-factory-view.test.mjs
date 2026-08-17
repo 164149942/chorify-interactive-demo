@@ -492,3 +492,22 @@ test('object rows without an override inherit their group rule instead of reques
   assert.match(sceneRow, /沿用分组规则/);
   assert.doesNotMatch(sceneRow, /待补充目标素材/);
 });
+
+test('row-level replace clicks show a replacement target instead of the stale keep summary', () => {
+  let state = createPlanState();
+  for (const [group, objectId, replacementLabel, staleKeepLabel] of [
+    ['person', 'person-01', '待选择或上传人物', '保留原人物'],
+    ['scene', 'scene-kitchen', '待选择或上传场景', '保留原场景'],
+    ['clip', 'clip-01', '待上传替代视频片段', '保留原片段'],
+  ]) {
+    state = updateReplacementMapping(state, group, { objectId, objectPatch: { strategy: 'replace' } });
+    const html = render(state);
+    const rowStart = html.indexOf(`data-mapping-object-id="${objectId}"`);
+    const nextRow = html.indexOf('data-mapping-object-id=', rowStart + 1);
+    const row = html.slice(rowStart, nextRow === -1 ? undefined : nextRow);
+
+    assert.match(row, new RegExp(`class="is-active"[^>]+data-value="replace"`));
+    assert.match(row, new RegExp(replacementLabel));
+    assert.doesNotMatch(row, new RegExp(staleKeepLabel));
+  }
+});

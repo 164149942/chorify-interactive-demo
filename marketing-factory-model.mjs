@@ -160,6 +160,20 @@ function objectTargetName(target) {
   return target?.name || '';
 }
 
+function replacementObjectTarget(group, strategy) {
+  if (strategy === 'keep') return { source: 'reference', name: '沿用参考视频' };
+  if (strategy === 'ai') return { source: 'ai', name: 'AI 生成匹配内容' };
+  if (strategy === 'replace') {
+    const placeholder = {
+      person: '待选择或上传人物',
+      scene: '待选择或上传场景',
+      clip: '待上传替代视频片段',
+    }[group] || '待选择目标素材';
+    return { source: '', name: '', placeholder };
+  }
+  return { source: '', name: '' };
+}
+
 function createReplacementObjects(summary, intent) {
   const localization = MARKET_LOCALIZATION[intent.targetCountry] || { language: '', subtitleMode: '' };
   return [
@@ -716,9 +730,13 @@ export function updateReplacementMapping(state, group, patch) {
     if (objectId && objectPatch) {
       order.replacementPlan.objects = (order.replacementPlan.objects || []).map((object) => {
         if (object.id !== objectId || object.group !== group) return object;
+        const strategyChanged = Object.hasOwn(objectPatch, 'strategy') && object.strategy !== objectPatch.strategy;
         const safePatch = {
           ...(Object.hasOwn(objectPatch, 'strategy') ? { strategy: objectPatch.strategy } : {}),
           ...(Object.hasOwn(objectPatch, 'target') ? { target: clone(objectPatch.target) } : {}),
+          ...(strategyChanged && !Object.hasOwn(objectPatch, 'target')
+            ? { target: replacementObjectTarget(group, objectPatch.strategy) }
+            : {}),
         };
         return { ...object, ...safePatch };
       });
