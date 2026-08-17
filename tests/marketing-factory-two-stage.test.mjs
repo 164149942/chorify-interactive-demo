@@ -13,6 +13,8 @@ import {
   submitReplicationIntent,
   startReferenceAnalysis,
   updateOrderDraft,
+  updatePlanFromNaturalLanguage,
+  updateReplacementMapping,
 } from '../marketing-factory-model.mjs';
 import { renderMarketingFactory } from '../marketing-factory-view.mjs';
 
@@ -120,6 +122,7 @@ test('intent review blocks analysis until its required reference and conflict ar
 
   state = confirmReplicationIntent(state);
   assert.equal(activeOrder(state).phase, 'analyzing');
+  assert.equal(activeOrder(state).intentDraft.quickMode, '');
 });
 
 test('analysis builds independent mapping groups and a product rule covers every product exposure', () => {
@@ -148,4 +151,62 @@ test('reopening the first form keeps the reference analysis and invalidates the 
   assert.deepEqual(order.referenceAnalysis, previousAnalysis);
   assert.equal(order.replacementPlan.status, 'invalidated');
   assert.equal(order.replacementPlan.invalidatedReason, 'intent_reopened');
+});
+
+test('an invalidated replacement plan cannot create candidates until analysis builds a fresh plan', () => {
+  let state = completeAnalysis(createSameProductIntake());
+  state = reopenOrderConfiguration(state);
+  state = confirmProductionPlan(state);
+  let order = activeOrder(state);
+
+  assert.equal(order.phase, 'plan');
+  assert.equal(order.candidates.length, 0);
+  assert.deepEqual(order.validationErrors, ['replacementPlan']);
+
+  for (const count of [1, 3, 5]) {
+    let fresh = completeAnalysis(createSameProductIntake());
+    fresh = updateOrderDraft(fresh, { candidateCount: count });
+    fresh = confirmProductionPlan(fresh);
+    assert.equal(activeOrder(fresh).candidates.length, count);
+  }
+});
+
+test('a form-two target product conflicts with same-product mode and blocks plan confirmation', () => {
+  let state = completeAnalysis(createSameProductIntake());
+  state = updateReplacementMapping(state, 'product', {
+    target: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  let order = activeOrder(state);
+
+  assert.deepEqual(order.intentDraft.conflicts, ['same_product_with_target_product']);
+
+  state = confirmProductionPlan(state);
+  order = activeOrder(state);
+  assert.equal(order.phase, 'plan');
+  assert.equal(order.candidates.length, 0);
+  assert.deepEqual(order.validationErrors, ['same_product_with_target_product']);
+});
+
+test('form-two mapping APIs do not mutate form-one state before the plan stage', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  const before = structuredClone(activeOrder(state));
+
+  state = updateReplacementMapping(state, 'product', {
+    target: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  state = updatePlanFromNaturalLanguage(state, '投放巴西，生成 5 条，人物换成拉丁裔年轻女性');
+  const order = activeOrder(state);
+
+  assert.deepEqual(order.intentDraft, before.intentDraft);
+  assert.deepEqual(order.replacementPlan, before.replacementPlan);
+});
+
+test('analysis aggregates the same person across deterministic source shots', () => {
+  const order = activeOrder(completeAnalysis(createSameProductIntake()));
+
+  assert.deepEqual(order.replacementPlan.person.sources, [{
+    id: 'person-1',
+    label: '主出镜人物',
+    shotIds: ['shot-01', 'shot-03', 'shot-06', 'shot-09'],
+  }]);
 });

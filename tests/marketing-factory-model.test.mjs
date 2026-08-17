@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  advanceReferenceAnalysis,
   advanceOrder,
   applyDemoPreset,
   createDemoState,
@@ -12,6 +13,8 @@ import {
   resolveMissingMaterial,
   approveCandidate,
   applyReplacementGroupRule,
+  confirmProductionPlan,
+  confirmReplicationIntent,
   exportCandidate,
   parseReplicationIntent,
   requestCandidateRevision,
@@ -22,6 +25,8 @@ import {
   sendPreviewRevision,
   setCandidateView,
   submitOrder,
+  submitReplicationIntent,
+  startReferenceAnalysis,
   toggleChangeGoal,
   togglePanel,
   updatePlanFromNaturalLanguage,
@@ -33,6 +38,22 @@ function createConfiguredOrder() {
   let state = createOrder(createDemoState());
   state = applyDemoPreset(state);
   return state;
+}
+
+function completeAnalysis(state) {
+  let next = startReferenceAnalysis(state);
+  while (next.orders[next.activeOrderId].phase === 'analyzing') next = advanceReferenceAnalysis(next);
+  return next;
+}
+
+function createPlanOrder() {
+  let state = createOrder(createDemoState());
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    market: '墨西哥',
+  });
+  return completeAnalysis(state);
 }
 
 test('all video replication entry points reuse the same conversation form', () => {
@@ -168,7 +189,10 @@ test('saving reopened configuration replaces candidate slots without retaining a
   state = selectCandidate(state, previousCandidateId);
   state = reopenOrderConfiguration(state);
   state = updateOrderDraft(state, { candidateCount: 1 });
-  state = submitOrder(state);
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  while (state.orders[state.activeOrderId].phase === 'analyzing') state = advanceReferenceAnalysis(state);
+  state = confirmProductionPlan(state);
   state = advanceOrder(advanceOrder(state));
   const order = state.orders[state.activeOrderId];
 
@@ -327,7 +351,7 @@ test('natural-language intent parsing flags a same-product shortcut that conflic
 });
 
 test('plan language and direct mapping updates operate on the five replacement groups', () => {
-  let state = createOrder(createDemoState());
+  let state = createPlanOrder();
   state = updatePlanFromNaturalLanguage(state, '投放巴西，生成 5 条，人物换成拉丁裔年轻女性');
   state = updateReplacementMapping(state, 'product', {
     target: { source: 'library', name: '便携式榨汁杯 Pro' },
@@ -346,8 +370,9 @@ test('plan language and direct mapping updates operate on the five replacement g
   assert.deepEqual(order.replacementPlan.product, {
     target: { source: 'library', name: '便携式榨汁杯 Pro' },
     scope: 'all_exposures',
+    exposureCount: 5,
   });
   assert.equal(order.replacementPlan.person.strategy, 'replace');
   assert.match(order.replacementPlan.person.target, /拉丁裔年轻女性/);
-  assert.deepEqual(Object.keys(order.replacementPlan), ['product', 'localization', 'person', 'scene', 'clip']);
+  assert.deepEqual(Object.keys(order.replacementPlan).filter((key) => key !== 'blockingItems'), ['product', 'localization', 'person', 'scene', 'clip']);
 });

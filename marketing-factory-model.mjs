@@ -96,6 +96,12 @@ function createUnderstandingSummary(intent) {
   return `参考视频：${referenceLabel}；目标市场：${countryLabel}；人物${intent.strategies.person}、场景${intent.strategies.scene}、片段${intent.strategies.clip}。`;
 }
 
+function getIntentConflicts(intent) {
+  return intent.quickMode === 'same_product' && intent.targetProduct.name
+    ? ['same_product_with_target_product']
+    : [];
+}
+
 function buildReplacementPlan(analysis, intent) {
   const summary = analysis.summary || {};
   const localization = MARKET_LOCALIZATION[intent.targetCountry] || { language: '', subtitleMode: '' };
@@ -114,6 +120,11 @@ function buildReplacementPlan(analysis, intent) {
       strategy: intent.strategies.person,
       sourceCount: summary.personCount || 0,
       target: orderTargetDescription(intent, 'person'),
+      sources: summary.personCount ? [{
+        id: 'person-1',
+        label: '主出镜人物',
+        shotIds: ['shot-01', 'shot-03', 'shot-06', 'shot-09'],
+      }] : [],
     },
     scene: { strategy: intent.strategies.scene, sourceCount: summary.sceneCount || 0, target: '' },
     clip: { strategy: intent.strategies.clip, sourceCount: summary.shotCount || 0 },
@@ -445,9 +456,7 @@ export function parseReplicationIntent(text, currentIntent = {}) {
   if (input.includes('片段使用 AI') || input.includes('片段用 AI')) base.strategies.clip = 'ai';
   base.candidateCount = normalizeCandidateCount(base.candidateCount);
   base.naturalLanguage = input;
-  base.conflicts = base.quickMode === 'same_product' && base.targetProduct.name
-    ? ['same_product_with_target_product']
-    : [];
+  base.conflicts = getIntentConflicts(base);
   base.understandingSummary = createUnderstandingSummary(base);
   return base;
 }
@@ -456,9 +465,7 @@ export function submitReplicationIntent(state) {
   return updateActiveOrder(state, (order) => {
     if (!['intake', 'intent_review'].includes(order.phase) && !order.editingConfiguration) return order;
     order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
-    order.intentDraft.conflicts = order.intentDraft.quickMode === 'same_product' && order.intentDraft.targetProduct.name
-      ? ['same_product_with_target_product']
-      : [];
+    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
     order.intentDraft.blockingItems = [
       ...(order.intentDraft.reference.name ? [] : ['reference']),
       ...order.intentDraft.conflicts,
@@ -478,19 +485,18 @@ export function confirmReplicationIntent(state) {
       ...order.intentDraft.conflicts,
     ];
     if (order.intentDraft.blockingItems.length) return order;
-    order.intentDraft.quickMode ||= 'custom';
     order.draft = { ...order.draft, replicationMode: order.intentDraft.quickMode };
     syncLegacyDraftFromIntent(order);
     order.phase = 'intake';
     return order;
   });
-  return startReferenceAnalysis(reviewed);
+  return startReferenceAnalysis(reviewed, { allowEmptyQuickMode: true });
 }
 
 export function updateReplacementMapping(state, group, patch) {
   if (!['product', 'localization', 'person', 'scene', 'clip'].includes(group)) return state;
   return updateActiveOrder(state, (order) => {
-    if (!['intake', 'intent_review', 'plan'].includes(order.phase) && !order.editingConfiguration) return order;
+    if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
     order.replacementPlan[group] = { ...order.replacementPlan[group], ...clone(patch) };
     if (group === 'localization' && patch.targetCountry) {
       const localization = MARKET_LOCALIZATION[patch.targetCountry] || { language: '', subtitleMode: '' };
@@ -502,6 +508,7 @@ export function updateReplacementMapping(state, group, patch) {
       order.intentDraft.targetProduct = clone(patch.target);
       syncLegacyDraftFromIntent(order);
     }
+    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
     return order;
   });
 }
@@ -516,7 +523,7 @@ export function applyReplacementGroupRule(state, group, rule) {
 
 export function updatePlanFromNaturalLanguage(state, text) {
   return updateActiveOrder(state, (order) => {
-    if (!['intake', 'intent_review', 'plan'].includes(order.phase) && !order.editingConfiguration) return order;
+    if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
     order.intentDraft = parseReplicationIntent(text, order.intentDraft);
     syncLegacyDraftFromIntent(order);
     const localization = MARKET_LOCALIZATION[order.intentDraft.targetCountry] || { language: '', subtitleMode: '' };
@@ -531,16 +538,17 @@ export function updatePlanFromNaturalLanguage(state, text) {
         strategy: order.intentDraft.strategies[group],
       };
     }
+    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
     return order;
   });
 }
 
-export function startReferenceAnalysis(state) {
+export function startReferenceAnalysis(state, { allowEmptyQuickMode = false } = {}) {
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'intake') return order;
     const missing = [];
     if (!order.draft.reference.name) missing.push('reference');
-    if (!order.draft.replicationMode) missing.push('replicationMode');
+    if (!order.draft.replicationMode && !allowEmptyQuickMode) missing.push('replicationMode');
     order.validationErrors = missing;
     if (missing.length) return order;
 
@@ -608,6 +616,9 @@ export function confirmProductionPlan(state) {
     const missing = [];
     if (!order.draft.market) missing.push('market');
     if (order.draft.replicationMode === 'replace_product' && !order.draft.product.name) missing.push('product');
+    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    if (order.intentDraft.conflicts.length) missing.push(...order.intentDraft.conflicts);
+    if (order.replacementPlan.status === 'invalidated') missing.push('replacementPlan');
     if (order.replacementPlan.blockingItems?.length) missing.push(...order.replacementPlan.blockingItems);
     order.validationErrors = missing;
     if (missing.length) return order;
