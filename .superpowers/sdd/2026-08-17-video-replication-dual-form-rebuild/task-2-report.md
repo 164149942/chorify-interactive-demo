@@ -51,3 +51,9 @@
 ### Review-fix commit
 
 - Code and test fixes: `3551e61 fix: close dual-form review gaps`.
+
+### Scoped re-review: plan-stage conflict clear
+
+- RED: a real plan-stage same-product mapping conflict stayed blocked after `clearIntentTargetProduct`, because its phase guard rejected the form-two action.
+- GREEN: plan-stage clear now removes both the intent and legacy product target, recomputes the plan blockers, and permits confirmation. The guard remains limited to intake, intent review, plan, or a non-invalidated editing session.
+- Verification: `node --test tests/marketing-factory-model.test.mjs` passes 31 tests; full `node --test tests/*.test.mjs` passes 85 tests with 0 failures; `git diff --check` passes.

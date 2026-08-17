@@ -447,6 +447,27 @@ test('clearing a reviewed target product removes the same-product conflict witho
   assert.deepEqual(order.intentDraft.conflicts, []);
 });
 
+test('clearing a same-product conflict from the replacement plan removes its stale target and unlocks confirmation', () => {
+  let state = createPlanOrder();
+  state = updateReplacementMapping(state, 'product', {
+    target: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  let order = state.orders[state.activeOrderId];
+  assert.equal(order.phase, 'plan');
+  assert.deepEqual(order.intentDraft.conflicts, ['same_product_with_target_product']);
+  assert.deepEqual(order.replacementPlan.blockingItems, ['same_product_with_target_product']);
+
+  state = clearIntentTargetProduct(state);
+  state = confirmProductionPlan(state);
+  order = state.orders[state.activeOrderId];
+
+  assert.equal(order.intentDraft.targetProduct.name, '');
+  assert.equal(order.draft.product.name, '');
+  assert.deepEqual(order.intentDraft.conflicts, []);
+  assert.deepEqual(order.replacementPlan.blockingItems, []);
+  assert.equal(order.phase, 'running');
+});
+
 test('reopening a confirmed order returns to intent configuration and invalidates only the replacement plan', () => {
   let state = submitOrder(createConfiguredOrder());
   const previousCandidates = structuredClone(state.orders[state.activeOrderId].candidates);

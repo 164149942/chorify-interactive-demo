@@ -393,9 +393,15 @@ export function updateOrderDraft(state, patch) {
 
 export function clearIntentTargetProduct(state) {
   return updateActiveOrder(state, (order) => {
-    if (!['intake', 'intent_review'].includes(order.phase) && !order.editingConfiguration) return order;
+    const canClear = ['intake', 'intent_review', 'plan'].includes(order.phase)
+      || (order.editingConfiguration && order.replacementPlan.status !== 'invalidated');
+    if (!canClear) return order;
     order.intentDraft.targetProduct = { source: '', name: '' };
     order.draft.product = { source: '', name: '' };
+    if (order.phase === 'plan' || order.editingConfiguration) {
+      order.replacementPlan.product = { ...order.replacementPlan.product, target: { source: '', name: '' } };
+      recomputeReplacementPlanBlockers(order);
+    }
     order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
     order.intentDraft.blockingItems = [
       ...(order.intentDraft.reference.name ? [] : ['reference']),
