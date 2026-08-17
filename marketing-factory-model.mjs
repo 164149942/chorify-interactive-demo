@@ -7,6 +7,36 @@ const MARKET_LOCALIZATION = {
 
 const GOAL_ORDER = ['product', 'person', 'scene', 'clip', 'brand'];
 
+const REPLACEMENT_GROUP_LABELS = {
+  product: '商品',
+  localization: '本地化',
+  person: '人物',
+  scene: '场景',
+  clip: '视频片段',
+};
+
+const REPLACEMENT_TARGET_OPTIONS = {
+  product: [
+    { id: 'product-library', label: '从产品库选择', strategy: 'replace', target: { source: 'library', name: '便携式榨汁杯 Pro' } },
+    { id: 'product-upload', label: '上传商品资料', strategy: 'replace', target: { source: 'upload', name: '已上传商品资料' } },
+  ],
+  person: [
+    { id: 'person-library', label: '从人物库选择', strategy: 'replace', target: { source: 'library', name: '人物库 · 目标市场生活方式创作者' } },
+    { id: 'person-upload', label: '上传人物照片', strategy: 'replace', target: { source: 'upload', name: '已上传人物照片' } },
+    { id: 'person-ai', label: 'AI 生成人物', strategy: 'ai', target: { source: 'ai', name: 'AI 生成目标市场人物' } },
+  ],
+  scene: [
+    { id: 'scene-library', label: '从场景库选择', strategy: 'replace', target: { source: 'library', name: '场景库 · 目标市场生活场景' } },
+    { id: 'scene-upload', label: '上传场景素材', strategy: 'replace', target: { source: 'upload', name: '已上传场景素材' } },
+    { id: 'scene-ai', label: 'AI 重建场景', strategy: 'ai', target: { source: 'ai', name: 'AI 生成匹配场景' } },
+  ],
+  clip: [
+    { id: 'clip-library', label: '从素材库选择', strategy: 'replace', target: { source: 'library', name: '素材库 · 替代视频片段' } },
+    { id: 'clip-upload', label: '上传视频片段', strategy: 'replace', target: { source: 'upload', name: '已上传替代视频片段' } },
+    { id: 'clip-ai', label: 'AI 重建片段', strategy: 'ai', target: { source: 'ai', name: 'AI 生成匹配片段' } },
+  ],
+};
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -61,6 +91,44 @@ function createReplacementPlan() {
     scene: { strategy: 'keep', sourceCount: 0, target: '' },
     clip: { strategy: 'keep', sourceCount: 0 },
     objects: [],
+    affectedGroups: [],
+    affectedObjectIds: [],
+    review: {
+      picker: null,
+      lastChange: null,
+      changeSequence: 0,
+    },
+  };
+}
+
+function ensureReplacementPlanReview(plan) {
+  plan.affectedGroups ||= [];
+  plan.affectedObjectIds ||= [];
+  plan.review ||= { picker: null, lastChange: null, changeSequence: 0 };
+  plan.review.picker ??= null;
+  plan.review.lastChange ??= null;
+  plan.review.changeSequence ||= 0;
+  return plan.review;
+}
+
+function clearPlanReviewChange(order) {
+  const review = ensureReplacementPlanReview(order.replacementPlan);
+  order.replacementPlan.affectedGroups = [];
+  order.replacementPlan.affectedObjectIds = [];
+  review.picker = null;
+  review.lastChange = null;
+}
+
+function replacementPlanSnapshot(order) {
+  const replacementPlan = clone(order.replacementPlan);
+  const sequence = replacementPlan.review?.changeSequence || 0;
+  replacementPlan.affectedGroups = [];
+  replacementPlan.affectedObjectIds = [];
+  replacementPlan.review = { picker: null, lastChange: null, changeSequence: sequence };
+  return {
+    intentDraft: clone(order.intentDraft),
+    draft: clone(order.draft),
+    replacementPlan,
   };
 }
 
@@ -270,6 +338,13 @@ function buildReplacementPlan(analysis, intent) {
     scene: { strategy: intent.strategies.scene, sourceCount: summary.sceneCount || 0, target: '' },
     clip: { strategy: intent.strategies.clip, sourceCount: summary.shotCount || 0, target: '' },
     objects: createReplacementObjects(summary, intent),
+    affectedGroups: [],
+    affectedObjectIds: [],
+    review: {
+      picker: null,
+      lastChange: null,
+      changeSequence: 0,
+    },
   };
 }
 
@@ -527,6 +602,7 @@ export function clearIntentTargetProduct(state) {
     order.intentDraft.targetProduct = { source: '', name: '' };
     order.draft.product = { source: '', name: '' };
     if (order.phase === 'plan' || order.editingConfiguration) {
+      clearPlanReviewChange(order);
       order.replacementPlan.product = { ...order.replacementPlan.product, target: { source: '', name: '' } };
       order.replacementPlan.objects = (order.replacementPlan.objects || []).map((object) => object.group === 'product'
         ? { ...object, target: { source: '', name: '' } }
@@ -548,6 +624,7 @@ export function updateIntentStrategy(state, group, strategy) {
     order.intentDraft.strategyConflicts = (order.intentDraft.strategyConflicts || []).filter((item) => item.group !== group);
     order.draft.goals[group] = strategy !== 'keep';
     if (order.phase === 'plan' || order.editingConfiguration) {
+      clearPlanReviewChange(order);
       order.replacementPlan[group] = { ...order.replacementPlan[group], strategy };
       recomputeReplacementPlanBlockers(order);
     }
@@ -722,6 +799,7 @@ export function updateReplacementMapping(state, group, patch) {
   if (!['product', 'localization', 'person', 'scene', 'clip'].includes(group)) return state;
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
+    clearPlanReviewChange(order);
     const nextPatch = clone(patch);
     const objectId = nextPatch.objectId;
     const objectPatch = nextPatch.objectPatch;
@@ -774,10 +852,77 @@ export function applyReplacementGroupRule(state, group, rule) {
   return updateReplacementMapping(state, group, patch);
 }
 
+export function openReplacementTargetPicker(state, group, objectId) {
+  if (!Object.hasOwn(REPLACEMENT_TARGET_OPTIONS, group)) return state;
+  return updateActiveOrder(state, (order) => {
+    if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
+    const object = (order.replacementPlan.objects || []).find((item) => item.id === objectId && item.group === group);
+    if (!object) return order;
+    const review = ensureReplacementPlanReview(order.replacementPlan);
+    review.picker = {
+      group,
+      objectId,
+      options: clone(REPLACEMENT_TARGET_OPTIONS[group]),
+    };
+    return order;
+  });
+}
+
+export function closeReplacementTargetPicker(state) {
+  return updateActiveOrder(state, (order) => {
+    const review = ensureReplacementPlanReview(order.replacementPlan);
+    review.picker = null;
+    return order;
+  });
+}
+
+export function chooseReplacementTarget(state, optionId) {
+  const order = state.activeOrderId ? state.orders[state.activeOrderId] : null;
+  const picker = order?.replacementPlan?.review?.picker;
+  if (!picker) return state;
+  const option = (REPLACEMENT_TARGET_OPTIONS[picker.group] || []).find((item) => item.id === optionId);
+  if (!option) return state;
+
+  const next = picker.group === 'product'
+    ? updateReplacementMapping(state, 'product', { target: option.target, scope: 'all_exposures' })
+    : updateReplacementMapping(state, picker.group, {
+      objectId: picker.objectId,
+      objectPatch: { strategy: option.strategy, target: option.target },
+    });
+  return closeReplacementTargetPicker(next);
+}
+
+function replacementObjectIdsChanged(beforeObjects, afterObjects) {
+  const beforeById = new Map((beforeObjects || []).map((object) => [object.id, JSON.stringify(object)]));
+  return (afterObjects || [])
+    .filter((object) => beforeById.get(object.id) !== JSON.stringify(object))
+    .map((object) => object.id);
+}
+
+function synchronizeObjectsWithGroupStrategy(plan, group, strategy) {
+  plan.objects = (plan.objects || []).map((object) => {
+    if (object.group !== group) return object;
+    return {
+      ...object,
+      strategy,
+      target: replacementObjectTarget(group, strategy),
+    };
+  });
+}
+
 export function updatePlanFromNaturalLanguage(state, text) {
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
-    const before = Object.fromEntries(['localization', 'person', 'scene', 'clip'].map((group) => [group, JSON.stringify(order.replacementPlan[group])]));
+    const snapshot = replacementPlanSnapshot(order);
+    const priorAffectedGroups = clone(order.replacementPlan.affectedGroups || []);
+    const priorAffectedObjectIds = clone(order.replacementPlan.affectedObjectIds || []);
+    const priorLastChange = clone(order.replacementPlan.review?.lastChange || null);
+    const beforeObjects = clone(order.replacementPlan.objects || []);
+    const candidateCountBefore = order.intentDraft.candidateCount;
+    const beforeValues = Object.fromEntries(['localization', 'person', 'scene', 'clip']
+      .map((group) => [group, clone(order.replacementPlan[group])]));
+    const before = Object.fromEntries(Object.entries(beforeValues)
+      .map(([group, value]) => [group, JSON.stringify(value)]));
     order.intentDraft = parseReplicationIntent(text, order.intentDraft, { respectStructuredStrategies: false });
     syncLegacyDraftFromIntent(order);
     const localization = MARKET_LOCALIZATION[order.intentDraft.targetCountry] || { language: '', subtitleMode: '' };
@@ -790,23 +935,131 @@ export function updatePlanFromNaturalLanguage(state, text) {
       ? { ...object, target: { source: order.intentDraft.targetCountry ? 'market' : '', name: order.intentDraft.targetCountry || '', ...localization } }
       : object);
     for (const group of ['person', 'scene', 'clip']) {
+      const previousStrategy = order.replacementPlan[group].strategy;
       order.replacementPlan[group] = {
         ...order.replacementPlan[group],
         strategy: order.intentDraft.strategies[group],
       };
+      if (previousStrategy !== order.intentDraft.strategies[group]) {
+        synchronizeObjectsWithGroupStrategy(order.replacementPlan, group, order.intentDraft.strategies[group]);
+      }
     }
     applyPlanInheritance(order);
     refreshIntentGate(order);
     order.replacementPlan.affectedGroups = ['localization', 'person', 'scene', 'clip']
       .filter((group) => before[group] !== JSON.stringify(order.replacementPlan[group]));
+    order.replacementPlan.affectedObjectIds = replacementObjectIdsChanged(beforeObjects, order.replacementPlan.objects);
     recomputeReplacementPlanBlockers(order);
+    const candidateCountChanged = candidateCountBefore !== order.intentDraft.candidateCount;
+    const changedLabels = [
+      ...order.replacementPlan.affectedGroups.map((group) => REPLACEMENT_GROUP_LABELS[group]),
+      ...(candidateCountChanged ? ['候选数量'] : []),
+    ];
+    const review = ensureReplacementPlanReview(order.replacementPlan);
+    review.picker = null;
+    if (changedLabels.length) {
+      review.changeSequence += 1;
+      const undoToken = `${order.id}-plan-change-${review.changeSequence}`;
+      const changes = order.replacementPlan.affectedGroups.map((group) => ({
+        group,
+        label: REPLACEMENT_GROUP_LABELS[group],
+        before: clone(beforeValues[group]),
+        after: clone(order.replacementPlan[group]),
+      }));
+      if (candidateCountChanged) {
+        changes.push({
+          group: 'candidateCount',
+          label: '候选数量',
+          before: candidateCountBefore,
+          after: order.intentDraft.candidateCount,
+        });
+      }
+      review.lastChange = {
+        undoToken,
+        summary: `已更新${changedLabels.join('、')}`,
+        affectedGroups: clone(order.replacementPlan.affectedGroups),
+        affectedObjectIds: clone(order.replacementPlan.affectedObjectIds),
+        changes,
+        before: snapshot,
+      };
+    } else {
+      order.replacementPlan.affectedGroups = priorAffectedGroups;
+      order.replacementPlan.affectedObjectIds = priorAffectedObjectIds;
+      review.lastChange = priorLastChange;
+    }
     return order;
   });
+}
+
+export function undoLastPlanChange(state, undoToken) {
+  return updateActiveOrder(state, (order) => {
+    if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
+    const currentReview = ensureReplacementPlanReview(order.replacementPlan);
+    const change = currentReview.lastChange;
+    if (!change || (undoToken && change.undoToken !== undoToken)) return order;
+    const sequence = currentReview.changeSequence;
+    order.intentDraft = clone(change.before.intentDraft);
+    order.draft = clone(change.before.draft);
+    order.replacementPlan = clone(change.before.replacementPlan);
+    order.replacementPlan.affectedGroups = [];
+    order.replacementPlan.affectedObjectIds = [];
+    order.replacementPlan.review = { picker: null, lastChange: null, changeSequence: sequence };
+    refreshIntentGate(order);
+    recomputeReplacementPlanBlockers(order);
+    order.validationErrors = clone(order.replacementPlan.blockingItems || []);
+    appendMessage(order, {
+      role: 'assistant',
+      kind: 'message',
+      text: '已撤销上一条自然语言对替换清单的修改。生产仍需通过完整确认。',
+    });
+    return order;
+  });
+}
+
+export function getReplacementPlanReviewViewModel(order) {
+  const plan = order?.replacementPlan || createReplacementPlan();
+  const blockers = new Set(plan.blockingItems || []);
+  const affected = new Set(plan.affectedObjectIds || []);
+  const conflictForGroup = (group) => {
+    if (group === 'product' && blockers.has('same_product_with_target_product')) return true;
+    return blockers.has(`${group}_strategy_conflict`);
+  };
+  const missingForObject = (object) => blockers.has(`${object.id}_material`)
+    || blockers.has(`${object.group}_material`)
+    || (object.group === 'product' && blockers.has('product'))
+    || (object.group === 'localization' && blockers.has('market'));
+
+  const classified = (plan.objects || []).map((object) => {
+    let attention = '';
+    if (conflictForGroup(object.group)) attention = 'conflict';
+    else if (missingForObject(object)) attention = 'missing';
+    else if (affected.has(object.id)) attention = 'changed';
+    return { ...clone(object), attention };
+  });
+  const needsAttention = classified.filter((object) => object.attention);
+  const aiHandled = classified.filter((object) => !object.attention);
+  const groupOrder = ['product', 'localization', 'person', 'scene', 'clip'];
+  return {
+    counts: {
+      missing: needsAttention.filter((object) => object.attention === 'missing').length,
+      conflict: needsAttention.filter((object) => object.attention === 'conflict').length,
+      resolved: aiHandled.length,
+    },
+    needsAttention,
+    aiHandled,
+    groups: groupOrder.map((group) => ({
+      id: group,
+      label: REPLACEMENT_GROUP_LABELS[group],
+      needsAttention: needsAttention.filter((object) => object.group === group),
+      aiHandled: aiHandled.filter((object) => object.group === group),
+    })),
+  };
 }
 
 export function resolveReplacementPlanBlocker(state, blocker, resolution) {
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'plan') return order;
+    clearPlanReviewChange(order);
     const object = (order.replacementPlan.objects || []).find((item) => blocker === `${item.id}_material`);
     if (object) {
       const target = resolution === 'upload' ? { source: 'upload', name: '待上传替代素材' } : { source: '', name: '' };
@@ -1248,12 +1501,16 @@ export function sendConversationMessage(state, text) {
 
   let next = state;
   let synchronized = false;
+  let planChange = null;
+  const previousPlanChangeToken = initialOrder.replacementPlan?.review?.lastChange?.undoToken || null;
   if (['intake', 'intent_review'].includes(initialOrder.phase) || initialOrder.editingConfiguration) {
     next = updateIntentFromNaturalLanguage(next, cleanText);
     synchronized = true;
   } else if (initialOrder.phase === 'plan') {
     next = updatePlanFromNaturalLanguage(next, cleanText);
     synchronized = true;
+    const candidateChange = next.orders[next.activeOrderId]?.replacementPlan?.review?.lastChange || null;
+    if (candidateChange?.undoToken !== previousPlanChangeToken) planChange = candidateChange;
   }
 
   return updateActiveOrder(next, (order) => {
@@ -1261,10 +1518,17 @@ export function sendConversationMessage(state, text) {
     appendMessage(order, { role: 'user', kind: 'message', text: cleanText });
     appendMessage(order, {
       role: 'assistant',
-      kind: 'message',
+      kind: planChange ? 'plan-change' : 'message',
       text: synchronized
-        ? '已把这条要求同步到复刻配置。你仍可以直接修改下方表单，二者会保持一致。'
+        ? planChange
+          ? `已把这条要求同步到复刻配置：${planChange.summary}。请确认高亮项；如需恢复，可撤销本次更新。`
+          : '已把这条要求同步到复刻配置。你仍可以直接修改下方表单，二者会保持一致。'
         : '我已记录这条修改要求。已生成结果会保留；涉及正在生成的候选时，我会先展示影响范围再继续。',
+      ...(planChange ? {
+        planChangeToken: planChange.undoToken,
+        affectedGroups: clone(planChange.affectedGroups),
+        affectedObjectIds: clone(planChange.affectedObjectIds),
+      } : {}),
     });
     return order;
   });

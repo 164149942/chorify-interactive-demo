@@ -15,6 +15,7 @@ import {
   updateOrderDraft,
   updatePlanFromNaturalLanguage,
   updateReplacementMapping,
+  undoLastPlanChange,
 } from '../marketing-factory-model.mjs';
 import { renderMarketingFactory } from '../marketing-factory-view.mjs';
 
@@ -236,4 +237,26 @@ test('analysis aggregates the same person across deterministic source shots', ()
     label: '主出镜人物',
     shotIds: ['shot-01', 'shot-03', 'shot-06', 'shot-09'],
   }]);
+});
+
+test('undoing a composer change restores blockers and cannot bypass the production gate', () => {
+  let state = completeAnalysis(createSameProductIntake());
+  state = updateReplacementMapping(state, 'person', {
+    objectId: 'person-01',
+    objectPatch: { strategy: 'replace' },
+  });
+  assert.deepEqual(activeOrder(state).replacementPlan.blockingItems, ['person-01_material']);
+
+  state = updatePlanFromNaturalLanguage(state, '人物用 AI');
+  const token = activeOrder(state).replacementPlan.review.lastChange.undoToken;
+  assert.deepEqual(activeOrder(state).replacementPlan.blockingItems, []);
+
+  state = undoLastPlanChange(state, token);
+  state = confirmProductionPlan(state);
+  const order = activeOrder(state);
+
+  assert.equal(order.phase, 'plan');
+  assert.deepEqual(order.replacementPlan.blockingItems, ['person-01_material']);
+  assert.deepEqual(order.validationErrors, ['person-01_material']);
+  assert.equal(order.candidates.length, 0);
 });

@@ -9,6 +9,11 @@ import {
   createOrder,
   getMarketingFactoryViewModel,
   getProductionSummaryLabels,
+  getReplacementPlanReviewViewModel,
+  openReplacementTargetPicker,
+  closeReplacementTargetPicker,
+  chooseReplacementTarget,
+  undoLastPlanChange,
   openReplicationTool,
   openOrder,
   resolveMissingMaterial,
@@ -383,7 +388,10 @@ test('plan language and direct mapping updates operate on the five replacement g
   });
   assert.equal(order.replacementPlan.person.strategy, 'replace');
   assert.match(order.replacementPlan.person.target, /拉丁裔年轻女性/);
-  assert.deepEqual(Object.keys(order.replacementPlan).filter((key) => !['blockingItems', 'affectedGroups'].includes(key)), ['product', 'localization', 'person', 'scene', 'clip', 'objects']);
+  assert.deepEqual(
+    Object.keys(order.replacementPlan).filter((key) => !['blockingItems', 'affectedGroups', 'affectedObjectIds', 'review'].includes(key)),
+    ['product', 'localization', 'person', 'scene', 'clip', 'objects'],
+  );
 });
 
 test('setting an AI person strategy preserves AI through intent review and the replacement plan', () => {
@@ -507,6 +515,120 @@ test('natural-language plan updates record every mapping group changed by the in
   const order = state.orders[state.activeOrderId];
 
   assert.deepEqual(order.replacementPlan.affectedGroups, ['localization', 'person', 'scene', 'clip']);
+});
+
+test('replacement review classifies missing conflict and settled objects for attention-first rendering', () => {
+  let state = createPlanOrder();
+  state = updateReplacementMapping(state, 'person', {
+    objectId: 'person-01',
+    objectPatch: { strategy: 'replace' },
+  });
+  state = updateReplacementMapping(state, 'product', {
+    target: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+
+  const review = getReplacementPlanReviewViewModel(state.orders[state.activeOrderId]);
+
+  assert.deepEqual(review.counts, { missing: 1, conflict: 1, resolved: 8 });
+  assert.deepEqual(review.needsAttention.map((item) => [item.id, item.attention]), [
+    ['product-main', 'conflict'],
+    ['person-01', 'missing'],
+  ]);
+  assert.equal(review.aiHandled.length, 8);
+});
+
+test('target picker opens without results panes and applies one deterministic object target', () => {
+  let state = createPlanOrder();
+  const panesBefore = structuredClone(state.orders[state.activeOrderId].panes);
+
+  state = openReplacementTargetPicker(state, 'person', 'person-01');
+  let order = state.orders[state.activeOrderId];
+  assert.equal(order.replacementPlan.review.picker.group, 'person');
+  assert.equal(order.replacementPlan.review.picker.objectId, 'person-01');
+  assert.deepEqual(order.replacementPlan.review.picker.options.map((option) => option.id), [
+    'person-library', 'person-upload', 'person-ai',
+  ]);
+  assert.deepEqual(order.panes, panesBefore);
+
+  state = chooseReplacementTarget(state, 'person-ai');
+  order = state.orders[state.activeOrderId];
+  const person = order.replacementPlan.objects.find((item) => item.id === 'person-01');
+  assert.equal(person.strategy, 'ai');
+  assert.deepEqual(person.target, { source: 'ai', name: 'AI 生成目标市场人物' });
+  assert.equal(order.replacementPlan.review.picker, null);
+  assert.deepEqual(order.panes, panesBefore);
+
+  state = openReplacementTargetPicker(state, 'scene', 'scene-kitchen');
+  state = closeReplacementTargetPicker(state);
+  assert.equal(state.orders[state.activeOrderId].replacementPlan.review.picker, null);
+});
+
+test('composer plan changes keep one reversible snapshot and report affected rows', () => {
+  let state = createPlanOrder();
+  const before = structuredClone(state.orders[state.activeOrderId]);
+
+  state = sendConversationMessage(state, '投放巴西，人物用 AI，场景用 AI');
+  let order = state.orders[state.activeOrderId];
+  const change = order.replacementPlan.review.lastChange;
+
+  assert.deepEqual(order.replacementPlan.affectedGroups, ['localization', 'person', 'scene']);
+  assert.deepEqual(order.replacementPlan.affectedObjectIds, [
+    'localization-01', 'person-01', 'scene-kitchen', 'scene-table', 'scene-commute',
+  ]);
+  assert.match(change.summary, /本地化、人物、场景/);
+  assert.equal(change.affectedObjectIds.length, 5);
+  assert.ok(Array.isArray(change.changes));
+  assert.deepEqual(change.changes.find((item) => item.group === 'localization'), {
+    group: 'localization',
+    label: '本地化',
+    before: before.replacementPlan.localization,
+    after: order.replacementPlan.localization,
+  });
+  assert.ok(change.undoToken);
+  assert.equal(order.messages.at(-1).planChangeToken, change.undoToken);
+  assert.match(order.messages.at(-1).text, /撤销/);
+
+  state = undoLastPlanChange(state, change.undoToken);
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.intentDraft.targetCountry, before.intentDraft.targetCountry);
+  assert.equal(order.replacementPlan.localization.targetCountry, before.replacementPlan.localization.targetCountry);
+  assert.equal(order.replacementPlan.person.strategy, before.replacementPlan.person.strategy);
+  assert.deepEqual(order.replacementPlan.objects, before.replacementPlan.objects);
+  assert.deepEqual(order.replacementPlan.blockingItems, before.replacementPlan.blockingItems);
+  assert.deepEqual(order.replacementPlan.affectedGroups, []);
+  assert.deepEqual(order.replacementPlan.affectedObjectIds, []);
+  assert.equal(order.replacementPlan.review.lastChange, null);
+});
+
+test('a direct mapping decision clears stale composer highlights and undo state', () => {
+  let state = createPlanOrder();
+  state = sendConversationMessage(state, '投放巴西，人物用 AI');
+  assert.ok(state.orders[state.activeOrderId].replacementPlan.review.lastChange);
+
+  state = updateReplacementMapping(state, 'person', {
+    objectId: 'person-01',
+    objectPatch: { strategy: 'keep' },
+  });
+  const plan = state.orders[state.activeOrderId].replacementPlan;
+
+  assert.deepEqual(plan.affectedGroups, []);
+  assert.deepEqual(plan.affectedObjectIds, []);
+  assert.equal(plan.review.lastChange, null);
+});
+
+test('an unrelated composer message preserves the prior one-step undo without claiming another plan change', () => {
+  let state = createPlanOrder();
+  state = sendConversationMessage(state, '投放巴西，人物用 AI');
+  const firstChange = structuredClone(state.orders[state.activeOrderId].replacementPlan.review.lastChange);
+
+  state = sendConversationMessage(state, '为什么这样安排？');
+  const order = state.orders[state.activeOrderId];
+
+  assert.ok(order.replacementPlan.review.lastChange);
+  assert.equal(order.replacementPlan.review.lastChange.undoToken, firstChange.undoToken);
+  assert.deepEqual(order.replacementPlan.affectedObjectIds, firstChange.affectedObjectIds);
+  assert.equal(order.messages.at(-1).kind, 'message');
+  assert.equal(order.messages.at(-1).planChangeToken, undefined);
 });
 
 test('replace strategies block production until every replaced person scene and clip has a target source', () => {
