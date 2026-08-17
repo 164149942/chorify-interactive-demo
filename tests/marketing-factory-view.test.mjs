@@ -154,14 +154,14 @@ test('clicking any candidate opens its far-right status detail even before previ
   assert.doesNotMatch(html, new RegExp(`data-candidate-id="${queuedCandidateId}" disabled`));
 });
 
-test('reopened configuration preserves submitted values inside the same conversation', () => {
+test('reopened configuration returns to the intent form instead of an invalidated plan', () => {
   let state = submitOrder(applyDemoPreset(openReplicationTool(createDemoState(), 'welcome-card')));
   state = reopenOrderConfiguration(state);
   const html = render(state);
 
-  assert.match(html, /id="production-plan-form"/);
-  assert.match(html, /取消修改/);
-  assert.match(html, /确认替换方案并开始复刻/);
+  assert.match(html, /id="reference-intake-form"/);
+  assert.match(html, /旧替换清单已失效/);
+  assert.doesNotMatch(html, /id="production-plan-form"/);
 });
 
 test('selecting a ready candidate opens the far-right preview and revision composer', () => {
@@ -262,6 +262,40 @@ test('first form keeps conflicts visible and prevents advancing analysis until t
 
   assert.match(html, /当前有冲突需要处理/);
   assert.match(html, /same_product_with_target_product/);
+  assert.match(html, /data-action="clear-intent-target-product"/);
+  assert.doesNotMatch(html, /id="production-plan-form"/);
+});
+
+test('blocker actions match the missing replacement input instead of offering an unrelated AI action', () => {
+  let productState = openReplicationTool(createDemoState(), 'welcome-card');
+  productState = updateOrderDraft(productState, { reference: { source: 'upload', name: '参考爆款视频.mp4' }, replicationMode: 'replace_product' });
+  productState = submitReplicationIntent(productState);
+  productState = confirmReplicationIntent(productState);
+  productState = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(productState)));
+  const productHtml = render(productState);
+
+  assert.match(productHtml, /data-action="pick-replacement-target" data-group="product" data-source="library"/);
+  assert.match(productHtml, /data-action="pick-replacement-target" data-group="product" data-source="upload"/);
+  assert.doesNotMatch(productHtml, /data-action="resolve-plan-limit" data-blocker="product"/);
+
+  let marketState = openReplicationTool(createDemoState(), 'welcome-card');
+  marketState = updateOrderDraft(marketState, { reference: { source: 'upload', name: '参考爆款视频.mp4' }, replicationMode: 'same_product' });
+  marketState = submitReplicationIntent(marketState);
+  marketState = confirmReplicationIntent(marketState);
+  marketState = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(marketState)));
+  const marketHtml = render(marketState);
+
+  assert.match(marketHtml, /data-action="select-market-blocker"/);
+  assert.doesNotMatch(marketHtml, /data-action="resolve-plan-limit" data-blocker="product"/);
+});
+
+test('reopening configuration renders the first form and explicitly marks the old replacement plan invalid', () => {
+  let state = submitOrder(applyDemoPreset(openReplicationTool(createDemoState(), 'welcome-card')));
+  state = reopenOrderConfiguration(state);
+  const html = render(state);
+
+  assert.match(html, /id="reference-intake-form"/);
+  assert.match(html, /旧替换清单已失效/);
   assert.doesNotMatch(html, /id="production-plan-form"/);
 });
 
@@ -280,6 +314,26 @@ test('analysis is conversational and appends a replacement-plan confirmation car
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
 });
 
+test('conversation orders intent, one analysis progress message, completion, and the new plan', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    market: '墨西哥',
+  });
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
+  const html = render(state);
+  const intentIndex = html.indexOf('已确认复刻意图');
+  const progressIndex = html.indexOf('正在读取镜头结构');
+  const completionIndex = html.indexOf('分析完成：共');
+  const planIndex = html.indexOf('确认替换清单');
+
+  assert.ok(intentIndex < progressIndex && progressIndex < completionIndex && completionIndex < planIndex);
+  assert.equal((html.match(/正在读取镜头结构/g) || []).length, 1);
+});
+
 test('the second inline form renders five mapping groups, applies natural-language changes without generating, and gates blockers', () => {
   let state = openReplicationTool(createDemoState(), 'welcome-card');
   state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' }, replicationMode: 'replace_product' });
@@ -295,7 +349,7 @@ test('the second inline form renders five mapping groups, applies natural-langua
   assert.match(html, /data-replacement-group="scene"/);
   assert.match(html, /data-replacement-group="clip"/);
   assert.match(html, /原对象[\s\S]*→[\s\S]*目标对象/);
-  assert.match(html, /人物库[\s\S]*上传[\s\S]*AI/);
+  assert.match(html, /data-action="set-replacement-strategy" data-group="person" data-value="ai"/);
   assert.match(html, /受影响/);
   assert.match(html, /1 条[\s\S]*3 条[\s\S]*5 条/);
   assert.match(html, /确认替换方案并开始复刻/);

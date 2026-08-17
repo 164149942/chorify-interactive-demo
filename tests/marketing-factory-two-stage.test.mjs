@@ -157,7 +157,7 @@ test('analysis builds independent mapping groups and a product rule covers every
   assert.equal(order.replacementPlan.product.scope, 'all_exposures');
   assert.equal(order.replacementPlan.product.exposureCount, 5);
   assert.equal(order.replacementPlan.scene.sourceCount, 3);
-  assert.deepEqual(order.replacementPlan.clip, { strategy: 'keep', sourceCount: 12 });
+  assert.deepEqual(order.replacementPlan.clip, { strategy: 'keep', sourceCount: 12, target: '' });
 });
 
 test('reopening the first form keeps the reference analysis and invalidates the current replacement plan', () => {
@@ -167,7 +167,8 @@ test('reopening the first form keeps the reference analysis and invalidates the 
   state = reopenOrderConfiguration(state);
   const order = activeOrder(state);
 
-  assert.equal(order.editingConfiguration, true);
+  assert.equal(order.editingConfiguration, false);
+  assert.equal(order.phase, 'intake');
   assert.deepEqual(order.referenceAnalysis, previousAnalysis);
   assert.equal(order.replacementPlan.status, 'invalidated');
   assert.equal(order.replacementPlan.invalidatedReason, 'intent_reopened');
@@ -179,9 +180,15 @@ test('an invalidated replacement plan cannot create candidates until analysis bu
   state = confirmProductionPlan(state);
   let order = activeOrder(state);
 
-  assert.equal(order.phase, 'plan');
+  assert.equal(order.phase, 'intake');
   assert.equal(order.candidates.length, 0);
-  assert.deepEqual(order.validationErrors, ['replacementPlan']);
+  assert.equal(order.replacementPlan.status, 'invalidated');
+
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  while (activeOrder(state).phase === 'analyzing') state = advanceReferenceAnalysis(state);
+  state = confirmProductionPlan(state);
+  assert.equal(activeOrder(state).phase, 'running');
 
   for (const count of [1, 3, 5]) {
     let fresh = completeAnalysis(createSameProductIntake());

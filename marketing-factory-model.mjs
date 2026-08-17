@@ -102,6 +102,22 @@ function getIntentConflicts(intent) {
     : [];
 }
 
+// The production confirmation gate lives in the model so the form and the
+// submit action always agree about what still needs a decision.
+function recomputeReplacementPlanBlockers(order) {
+  const plan = order.replacementPlan;
+  if (!plan || plan.status === 'invalidated') return;
+  const blockers = [];
+  const mode = order.intentDraft.quickMode || order.draft.replicationMode;
+  if (['replace_product', 'custom'].includes(mode) && !plan.product?.target?.name) blockers.push('product');
+  if (['same_product', 'custom'].includes(mode) && !plan.localization?.targetCountry) blockers.push('market');
+  blockers.push(...getIntentConflicts(order.intentDraft));
+  for (const group of ['person', 'scene', 'clip']) {
+    if (plan[group]?.strategy === 'replace' && !plan[group]?.target) blockers.push(`${group}_material`);
+  }
+  plan.blockingItems = [...new Set(blockers)];
+}
+
 function buildReplacementPlan(analysis, intent) {
   const summary = analysis.summary || {};
   const localization = MARKET_LOCALIZATION[intent.targetCountry] || { language: '', subtitleMode: '' };
@@ -127,14 +143,12 @@ function buildReplacementPlan(analysis, intent) {
       }] : [],
     },
     scene: { strategy: intent.strategies.scene, sourceCount: summary.sceneCount || 0, target: '' },
-    clip: { strategy: intent.strategies.clip, sourceCount: summary.shotCount || 0 },
+    clip: { strategy: intent.strategies.clip, sourceCount: summary.shotCount || 0, target: '' },
   };
 }
 
 function orderTargetDescription(intent, group) {
-  return group === 'person' && intent.strategies.person === 'replace'
-    ? '待确认人物替换描述'
-    : '';
+  return '';
 }
 
 function createBlankOrder(id, number) {
@@ -356,10 +370,38 @@ export function updateOrderDraft(state, patch) {
       order.draft.subtitleMode = localization.subtitleMode;
     }
     updateIntentFromLegacyPatch(order, patch);
+    if (Object.hasOwn(patch, 'replicationMode') && !Object.hasOwn(patch, 'product')) {
+      if (['', 'same_product'].includes(patch.replicationMode)) {
+        order.intentDraft.targetProduct = { source: '', name: '' };
+        order.draft.product = { source: '', name: '' };
+      }
+      if (['', 'replace_product'].includes(patch.replicationMode)) {
+        order.intentDraft.targetCountry = '';
+        order.draft.market = '';
+      }
+      syncLegacyDraftFromIntent(order);
+    }
     if (Object.hasOwn(patch, 'personMode')) {
       order.intentDraft.strategies.person = patch.personMode === 'keep' ? 'keep' : 'replace';
     }
+    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
     order.validationErrors = order.validationErrors.filter((field) => !Object.hasOwn(patch, field));
+    return order;
+  });
+}
+
+export function clearIntentTargetProduct(state) {
+  return updateActiveOrder(state, (order) => {
+    if (!['intake', 'intent_review'].includes(order.phase) && !order.editingConfiguration) return order;
+    order.intentDraft.targetProduct = { source: '', name: '' };
+    order.draft.product = { source: '', name: '' };
+    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    order.intentDraft.blockingItems = [
+      ...(order.intentDraft.reference.name ? [] : ['reference']),
+      ...order.intentDraft.conflicts,
+    ];
+    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
     return order;
   });
 }
@@ -372,9 +414,11 @@ export function updateIntentStrategy(state, group, strategy) {
     order.draft.goals[group] = strategy !== 'keep';
     if (order.phase === 'plan' || order.editingConfiguration) {
       order.replacementPlan[group] = { ...order.replacementPlan[group], strategy };
+      recomputeReplacementPlanBlockers(order);
     }
     order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
     order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    recomputeReplacementPlanBlockers(order);
     return order;
   });
 }
@@ -535,6 +579,7 @@ export function updateReplacementMapping(state, group, patch) {
       syncLegacyDraftFromIntent(order);
     }
     order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    recomputeReplacementPlanBlockers(order);
     return order;
   });
 }
@@ -550,6 +595,7 @@ export function applyReplacementGroupRule(state, group, rule) {
 export function updatePlanFromNaturalLanguage(state, text) {
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
+    const before = Object.fromEntries(['localization', 'person', 'scene', 'clip'].map((group) => [group, JSON.stringify(order.replacementPlan[group])]));
     order.intentDraft = parseReplicationIntent(text, order.intentDraft);
     syncLegacyDraftFromIntent(order);
     const localization = MARKET_LOCALIZATION[order.intentDraft.targetCountry] || { language: '', subtitleMode: '' };
@@ -565,6 +611,21 @@ export function updatePlanFromNaturalLanguage(state, text) {
       };
     }
     order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    order.replacementPlan.affectedGroups = ['localization', 'person', 'scene', 'clip']
+      .filter((group) => before[group] !== JSON.stringify(order.replacementPlan[group]));
+    recomputeReplacementPlanBlockers(order);
+    return order;
+  });
+}
+
+export function resolveReplacementPlanBlocker(state, blocker, resolution) {
+  return updateActiveOrder(state, (order) => {
+    if (order.phase !== 'plan') return order;
+    const group = ['person', 'scene', 'clip'].find((item) => String(blocker).includes(item)) || 'clip';
+    if (resolution === 'ai') order.replacementPlan[group] = { ...order.replacementPlan[group], strategy: 'ai' };
+    if (resolution === 'upload') order.replacementPlan[group] = { ...order.replacementPlan[group], strategy: 'replace', target: '待上传替代素材' };
+    if (resolution === 'keep') order.replacementPlan[group] = { ...order.replacementPlan[group], strategy: 'keep', keepLimitAcknowledged: true };
+    recomputeReplacementPlanBlockers(order);
     return order;
   });
 }
@@ -620,7 +681,10 @@ export function advanceReferenceAnalysis(state) {
     order.analysis = { status: 'completed', step: 3, progress: 100, summary: createReferenceAnalysisSummary() };
     order.referenceAnalysis = clone(order.analysis);
     order.replacementPlan = buildReplacementPlan(order.referenceAnalysis, order.intentDraft);
-    order.replacementPlan.blockingItems = [];
+    if (order.replacementPlan.person.strategy === 'replace' && order.draft.personDescription) {
+      order.replacementPlan.person.target = order.draft.personDescription;
+    }
+    recomputeReplacementPlanBlockers(order);
     order.phase = 'plan';
     order.status = '生产方案待确认';
     order.formCollapsed = false;
@@ -639,11 +703,9 @@ export function confirmProductionPlan(state) {
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'plan' && !order.editingConfiguration) return order;
     const wasEditing = order.editingConfiguration;
-    const missing = [];
-    if (['same_product', 'custom'].includes(order.draft.replicationMode) && !order.draft.market) missing.push('market');
-    if (['replace_product', 'custom'].includes(order.draft.replicationMode) && !order.draft.product.name) missing.push('product');
     order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
-    if (order.intentDraft.conflicts.length) missing.push(...order.intentDraft.conflicts);
+    recomputeReplacementPlanBlockers(order);
+    const missing = [];
     if (order.replacementPlan.status === 'invalidated') missing.push('replacementPlan');
     if (order.replacementPlan.blockingItems?.length) missing.push(...order.replacementPlan.blockingItems);
     order.validationErrors = missing;
@@ -701,12 +763,16 @@ export function reopenOrderConfiguration(state) {
     order.submittedReplacementPlan ||= clone(order.replacementPlan);
     order.draft = clone(order.submittedDraft);
     order.intentDraft = clone(order.submittedIntentDraft);
+    order.archivedCandidateSets ||= [];
+    if (order.candidates.length) order.archivedCandidateSets.push(clone(order.candidates));
     order.replacementPlan = {
       ...clone(order.replacementPlan),
       status: 'invalidated',
       invalidatedReason: 'intent_reopened',
     };
-    order.editingConfiguration = true;
+    order.phase = 'intake';
+    order.status = '旧替换清单已失效，请确认复刻意图后重新分析';
+    order.editingConfiguration = false;
     order.formCollapsed = false;
     order.validationErrors = [];
     return order;

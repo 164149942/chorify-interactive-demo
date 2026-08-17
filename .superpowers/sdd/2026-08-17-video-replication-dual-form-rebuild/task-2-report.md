@@ -27,3 +27,23 @@
 
 - Mapping media is intentionally represented with compact visual placeholders; actual object thumbnails and asset pickers need a real asset service.
 - Natural-language plan updates highlight derived mapping changes but do not generate candidates until explicit confirmation.
+
+## Review-fix follow-up
+
+### RED / GREEN evidence
+
+- RED: focused model/view tests failed for stale target-product shortcuts, type-specific blocker actions, invalidated-plan reopening, message order, and missing person/scene/clip replacement materials.
+- GREEN: `node --test tests/marketing-factory-model.test.mjs tests/marketing-factory-view.test.mjs` passes 51 tests. Full `node --test tests/*.test.mjs` passes 84 tests with 0 failures; `git diff --check` passes.
+
+### Review fixes delivered
+
+- Switching to same-product or clearing a shortcut clears a no-longer-valid target product (and switching to product-only clears country). Intent conflicts now expose a direct “清除目标商品” action.
+- A single model-owned `replacementPlan.blockingItems` gate drives both confirmation and form-two blockers. Product, market, conflict, and person/scene/clip replacement-material blockers each have matching, state-changing resolution paths.
+- Person, scene, and clip replacements require a target source; library/upload actions write a target, while keep and AI remove the matching material blocker. Candidate creation remains blocked until the model gate is clear.
+- Reopening configuration returns to form one with an explicit invalidation notice. The old plan is marked invalidated, prior candidate records are archived, and only a fresh analysis can create the next plan.
+- Confirmed intent summary now precedes exactly one analysis progress message, then completion, then the new replacement plan. Natural-language plan updates record and highlight all changed mapping groups.
+
+### Compatibility and remaining concern
+
+- Existing candidate cards/tables, detail panel, review, versions, and export remain intact and full-suite covered. Reopened candidates remain available as archived records until fresh confirmation replaces active slots.
+- Asset selection is still a deterministic demo placeholder; production integration should replace the library/upload labels with real asset IDs and upload state.

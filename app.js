@@ -27,9 +27,11 @@ import {
   updateOrderDraft,
   updateIntentFromNaturalLanguage,
   updateIntentStrategy,
+  clearIntentTargetProduct,
   updatePlanFromNaturalLanguage,
   updateReplacementMapping,
   applyReplacementGroupRule,
+  resolveReplacementPlanBlocker,
 } from './marketing-factory-model.mjs';
 import { renderMarketingFactory } from './marketing-factory-view.mjs';
 
@@ -163,6 +165,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (action === 'clear-intent-target-product') {
+    state = clearIntentTargetProduct(state);
+    render();
+    return;
+  }
   if (action === 'set-intent-strategy') {
     state = updateIntentStrategy(state, target.dataset.group, target.dataset.value);
     render();
@@ -193,7 +200,22 @@ function handleClick(event) {
     return;
   }
   if (action === 'set-replacement-source') {
-    state = applyReplacementGroupRule(state, 'person', { strategy: target.dataset.value === 'ai' ? 'ai' : 'replace', target: target.dataset.value === 'library' ? '人物库候选' : target.dataset.value === 'upload' ? '待上传人物素材' : '' });
+    const group = target.dataset.group || 'person';
+    const label = group === 'person' ? '人物' : group === 'scene' ? '场景' : '片段';
+    state = applyReplacementGroupRule(state, group, {
+      strategy: 'replace',
+      target: target.dataset.value === 'library' ? `${label}库候选` : `待上传${label}素材`,
+    });
+    render();
+    return;
+  }
+  if (action === 'select-market-blocker') {
+    state = updateReplacementMapping(state, 'localization', { targetCountry: target.dataset.value });
+    render();
+    return;
+  }
+  if (action === 'resolve-plan-limit') {
+    state = resolveReplacementPlanBlocker(state, target.dataset.blocker, target.dataset.value);
     render();
     return;
   }

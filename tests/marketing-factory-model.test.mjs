@@ -19,6 +19,7 @@ import {
   parseReplicationIntent,
   requestCandidateRevision,
   reopenOrderConfiguration,
+  resolveReplacementPlanBlocker,
   cancelOrderConfigurationEdit,
   selectCandidate,
   sendConversationMessage,
@@ -32,6 +33,7 @@ import {
   updatePlanFromNaturalLanguage,
   updateIntentStrategy,
   updateIntentFromNaturalLanguage,
+  clearIntentTargetProduct,
   updateReplacementMapping,
   updateOrderDraft,
 } from '../marketing-factory-model.mjs';
@@ -152,7 +154,7 @@ test('candidate card and table view preference belongs to the active production 
   assert.deepEqual(unchanged, state);
 });
 
-test('reopening configuration preserves generated candidates selected video and versions', () => {
+test('reopening configuration archives the prior candidate version while returning to intent review', () => {
   let state = submitOrder(createConfiguredOrder());
   state = advanceOrder(advanceOrder(advanceOrder(state)));
   const candidateId = state.orders[state.activeOrderId].candidates[0].id;
@@ -164,24 +166,27 @@ test('reopening configuration preserves generated candidates selected video and 
   const reopened = state.orders[state.activeOrderId];
 
   assert.equal(reopened.formCollapsed, false);
-  assert.equal(reopened.editingConfiguration, true);
+  assert.equal(reopened.editingConfiguration, false);
+  assert.equal(reopened.phase, 'intake');
+  assert.equal(reopened.replacementPlan.status, 'invalidated');
   assert.deepEqual(reopened.candidates, before.candidates);
+  assert.deepEqual(reopened.archivedCandidateSets.at(-1), before.candidates);
   assert.equal(reopened.selectedCandidateId, candidateId);
   assert.deepEqual(reopened.panes, before.panes);
   assert.deepEqual(reopened.candidates[0].versionHistory, before.candidates[0].versionHistory);
 });
 
-test('cancelling reopened configuration restores the last submitted values', () => {
+test('cancelling an invalidated reconfiguration cannot revive the old replacement plan', () => {
   let state = submitOrder(createConfiguredOrder());
-  const submittedDraft = structuredClone(state.orders[state.activeOrderId].draft);
   state = reopenOrderConfiguration(state);
   state = updateOrderDraft(state, { market: '美国', candidateCount: 5 });
   state = cancelOrderConfigurationEdit(state);
   const order = state.orders[state.activeOrderId];
 
-  assert.equal(order.formCollapsed, true);
+  assert.equal(order.formCollapsed, false);
   assert.equal(order.editingConfiguration, false);
-  assert.deepEqual(order.draft, submittedDraft);
+  assert.equal(order.phase, 'intake');
+  assert.equal(order.replacementPlan.status, 'invalidated');
 });
 
 test('saving reopened configuration replaces candidate slots without retaining a stale detail selection', () => {
@@ -376,7 +381,7 @@ test('plan language and direct mapping updates operate on the five replacement g
   });
   assert.equal(order.replacementPlan.person.strategy, 'replace');
   assert.match(order.replacementPlan.person.target, /拉丁裔年轻女性/);
-  assert.deepEqual(Object.keys(order.replacementPlan).filter((key) => key !== 'blockingItems'), ['product', 'localization', 'person', 'scene', 'clip']);
+  assert.deepEqual(Object.keys(order.replacementPlan).filter((key) => !['blockingItems', 'affectedGroups'].includes(key)), ['product', 'localization', 'person', 'scene', 'clip']);
 });
 
 test('setting an AI person strategy preserves AI through intent review and the replacement plan', () => {
@@ -401,4 +406,104 @@ test('intent natural language updates the first form without starting analysis',
   assert.equal(order.intentDraft.targetCountry, '巴西');
   assert.equal(order.intentDraft.strategies.person, 'ai');
   assert.equal(order.intentDraft.strategies.clip, 'keep');
+});
+
+test('switching or clearing a shortcut cannot leave a hidden target product in an original-product path', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    replicationMode: 'replace_product',
+    product: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  state = updateOrderDraft(state, { replicationMode: 'same_product' });
+  let order = state.orders[state.activeOrderId];
+
+  assert.deepEqual(order.intentDraft.targetProduct, { source: '', name: '' });
+  assert.equal(order.draft.product.name, '');
+  assert.deepEqual(order.intentDraft.conflicts, []);
+
+  state = updateOrderDraft(state, {
+    replicationMode: 'replace_product',
+    product: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  state = updateOrderDraft(state, { replicationMode: '' });
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.intentDraft.quickMode, '');
+  assert.equal(order.intentDraft.targetProduct.name, '');
+});
+
+test('clearing a reviewed target product removes the same-product conflict without changing the reference', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    product: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  state = submitReplicationIntent(state);
+  state = clearIntentTargetProduct(state);
+  const order = state.orders[state.activeOrderId];
+
+  assert.equal(order.intentDraft.reference.name, '参考爆款视频.mp4');
+  assert.equal(order.intentDraft.targetProduct.name, '');
+  assert.deepEqual(order.intentDraft.conflicts, []);
+});
+
+test('reopening a confirmed order returns to intent configuration and invalidates only the replacement plan', () => {
+  let state = submitOrder(createConfiguredOrder());
+  const previousCandidates = structuredClone(state.orders[state.activeOrderId].candidates);
+  state = reopenOrderConfiguration(state);
+  const order = state.orders[state.activeOrderId];
+
+  assert.equal(order.phase, 'intake');
+  assert.equal(order.editingConfiguration, false);
+  assert.equal(order.replacementPlan.status, 'invalidated');
+  assert.deepEqual(order.candidates, previousCandidates);
+});
+
+test('natural-language plan updates record every mapping group changed by the instruction', () => {
+  let state = createPlanOrder();
+  state = updatePlanFromNaturalLanguage(state, '投放巴西，人物用 AI，场景用 AI，片段用 AI');
+  const order = state.orders[state.activeOrderId];
+
+  assert.deepEqual(order.replacementPlan.affectedGroups, ['localization', 'person', 'scene', 'clip']);
+});
+
+test('replace strategies block production until every replaced person scene and clip has a target source', () => {
+  let state = createPlanOrder();
+  state = applyReplacementGroupRule(state, 'person', { strategy: 'replace' });
+  state = applyReplacementGroupRule(state, 'scene', { strategy: 'replace' });
+  state = applyReplacementGroupRule(state, 'clip', { strategy: 'replace' });
+  state = confirmProductionPlan(state);
+  let order = state.orders[state.activeOrderId];
+
+  assert.equal(order.phase, 'plan');
+  assert.deepEqual(order.replacementPlan.blockingItems, ['person_material', 'scene_material', 'clip_material']);
+
+  state = applyReplacementGroupRule(state, 'person', { strategy: 'replace', target: '人物库候选' });
+  state = applyReplacementGroupRule(state, 'scene', { strategy: 'replace', target: '已上传场景素材' });
+  state = applyReplacementGroupRule(state, 'clip', { strategy: 'replace', target: '已上传片段素材' });
+  state = confirmProductionPlan(state);
+  order = state.orders[state.activeOrderId];
+
+  assert.equal(order.phase, 'running');
+});
+
+test('typed blocker resolutions change the matching model field and unlock only that blocker', () => {
+  let state = createPlanOrder();
+  state = updateReplacementMapping(state, 'localization', { targetCountry: '' });
+  let order = state.orders[state.activeOrderId];
+  assert.deepEqual(order.replacementPlan.blockingItems, ['market']);
+
+  state = updateReplacementMapping(state, 'localization', { targetCountry: '巴西' });
+  order = state.orders[state.activeOrderId];
+  assert.deepEqual(order.replacementPlan.blockingItems, []);
+
+  state = applyReplacementGroupRule(state, 'scene', { strategy: 'replace' });
+  state = confirmProductionPlan(state);
+  order = state.orders[state.activeOrderId];
+  assert.deepEqual(order.replacementPlan.blockingItems, ['scene_material']);
+
+  state = resolveReplacementPlanBlocker(state, 'scene_material', 'upload');
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.replacementPlan.scene.target, '待上传替代素材');
+  assert.deepEqual(order.replacementPlan.blockingItems, []);
 });
