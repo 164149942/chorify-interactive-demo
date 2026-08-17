@@ -47,3 +47,7 @@
 
 - Existing candidate cards/tables, detail panel, review, versions, and export remain intact and full-suite covered. Reopened candidates remain available as archived records until fresh confirmation replaces active slots.
 - Asset selection is still a deterministic demo placeholder; production integration should replace the library/upload labels with real asset IDs and upload state.
+
+### Review-fix commit
+
+- Code and test fixes: `3551e61 fix: close dual-form review gaps`.
