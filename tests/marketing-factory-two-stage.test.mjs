@@ -89,8 +89,8 @@ test('replace-product plan requires the target product only after analysis', () 
 test('the chat renders a compact intake first and a data-driven second form after analysis', () => {
   const intakeHtml = renderMarketingFactory(getMarketingFactoryViewModel(createSameProductIntake()));
   assert.match(intakeHtml, /id="reference-intake-form"/);
-  assert.match(intakeHtml, /先分析，再配置生产方案/);
-  assert.match(intakeHtml, /同商品跨国家本地化/);
+  assert.match(intakeHtml, /定义这次要怎么复刻/);
+  assert.match(intakeHtml, /同商品，换投放国家/);
   assert.doesNotMatch(intakeHtml, /人物来源/);
   assert.doesNotMatch(intakeHtml, /候选数量/);
 
@@ -99,8 +99,8 @@ test('the chat renders a compact intake first and a data-driven second form afte
   assert.match(planHtml, /id="production-plan-form"/);
   assert.match(planHtml, /商品露出/);
   assert.match(planHtml, /检测到人物/);
-  assert.match(planHtml, /沿用参考视频中的商品/);
-  assert.match(planHtml, /建议补充，不阻塞生产/);
+  assert.match(planHtml, /确认替换清单/);
+  assert.match(planHtml, /原对象/);
 });
 
 test('intent review blocks analysis until its required reference and conflict are cleared', () => {

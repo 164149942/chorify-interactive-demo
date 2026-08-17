@@ -11,6 +11,11 @@ import {
   exportCandidate,
   getMarketingFactoryViewModel,
   openReplicationTool,
+  submitReplicationIntent,
+  confirmReplicationIntent,
+  updateOrderDraft,
+  updateReplacementMapping,
+  updatePlanFromNaturalLanguage,
   reopenOrderConfiguration,
   selectCandidate,
   setCandidateView,
@@ -49,10 +54,10 @@ test('opening the tool creates one chat and renders the compact intake inline', 
   assert.match(html, /aria-label="AI 聊天会话"/);
   assert.match(html, /id="reference-intake-form"/);
   assert.match(html, /参考视频/);
-  assert.match(html, /同商品跨国家本地化/);
-  assert.match(html, /替换为另一款商品/);
-  assert.match(html, /目标国家（选填）/);
-  assert.doesNotMatch(html, /目标商品/);
+  assert.match(html, /同商品，换投放国家/);
+  assert.match(html, /同国家，换商品/);
+  assert.doesNotMatch(html, /目标国家<\/strong>/);
+  assert.doesNotMatch(html, /目标商品<\/strong>/);
   assert.doesNotMatch(html, /人物来源/);
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
 });
@@ -94,13 +99,13 @@ test('opening video replication preserves the welcome canvas and composer visual
   assert.doesNotMatch(css, /\.conversation-column[^}]*background:\s*var\(--panel\)/s);
 });
 
-test('AI-detected conditional controls stay inside the second chat form', () => {
+test('AI-detected replacement controls stay inside the second chat form', () => {
   const html = render(createPlanState());
 
-  assert.match(html, /人物来源/);
-  assert.match(html, /AI 生成/);
-  assert.match(html, /25—35 岁墨西哥女性/);
-  assert.match(html, /Chorify Cup 品牌 Logo/);
+  assert.match(html, /data-replacement-group="person"/);
+  assert.match(html, /人物库/);
+  assert.match(html, /AI/);
+  assert.match(html, /目标来源/);
   assert.match(html, /参考视频分析完成/);
   assert.doesNotMatch(html, /场景替换说明/);
 });
@@ -155,10 +160,8 @@ test('reopened configuration preserves submitted values inside the same conversa
   const html = render(state);
 
   assert.match(html, /id="production-plan-form"/);
-  assert.match(html, /TikTok 爆款榨汁杯视频\.mp4/);
-  assert.match(html, /便携式榨汁杯 Pro/);
   assert.match(html, /取消修改/);
-  assert.match(html, /保存方案并重新生成/);
+  assert.match(html, /确认替换方案并开始复刻/);
 });
 
 test('selecting a ready candidate opens the far-right preview and revision composer', () => {
@@ -202,4 +205,100 @@ test('preview keeps human review gating and version delivery actions', () => {
   state = exportCandidate(state, candidateId);
   html = render(state);
   assert.match(html, /已导出/);
+});
+
+test('the first inline form captures a replication intent with tri-state choices and AI review', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  state = submitReplicationIntent(state);
+  const html = render(state);
+
+  assert.match(html, /定义这次要怎么复刻/);
+  assert.match(html, /data-action="set-replication-mode"/);
+  assert.match(html, /data-action="set-intent-strategy" data-group="person" data-value="keep"/);
+  assert.match(html, /data-action="set-intent-strategy" data-group="person" data-value="replace"/);
+  assert.match(html, /data-action="set-intent-strategy" data-group="person" data-value="ai"/);
+  assert.match(html, /识别我的要求/);
+  assert.match(html, /AI 理解/);
+  assert.match(html, /分析视频并生成替换清单/);
+  assert.match(html, /data-action="confirm-replication-intent"/);
+});
+
+test('first-form shortcuts expose no-change, country-only, product-only, and country-plus-product fields', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  let html = render(state);
+  assert.doesNotMatch(html, /目标国家<\/strong>/);
+  assert.doesNotMatch(html, /目标商品<\/strong>/);
+
+  state = updateOrderDraft(state, { replicationMode: 'same_product' });
+  html = render(state);
+  assert.match(html, /同商品，换投放国家/);
+  assert.match(html, /目标国家<\/strong>/);
+  assert.doesNotMatch(html, /目标商品<\/strong>/);
+  assert.match(html, /data-action="clear-quick-mode"/);
+
+  state = updateOrderDraft(state, { replicationMode: 'replace_product' });
+  html = render(state);
+  assert.match(html, /同国家，换商品/);
+  assert.doesNotMatch(html, /目标国家<\/strong>/);
+  assert.match(html, /目标商品<\/strong>/);
+
+  state = updateOrderDraft(state, { replicationMode: 'custom' });
+  html = render(state);
+  assert.match(html, /商品和国家都更换/);
+  assert.match(html, /目标国家<\/strong>/);
+  assert.match(html, /目标商品<\/strong>/);
+});
+
+test('first form keeps conflicts visible and prevents advancing analysis until they are resolved', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    product: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  state = submitReplicationIntent(state);
+  const html = render(state);
+
+  assert.match(html, /当前有冲突需要处理/);
+  assert.match(html, /same_product_with_target_product/);
+  assert.doesNotMatch(html, /id="production-plan-form"/);
+});
+
+test('analysis is conversational and appends a replacement-plan confirmation card instead of candidates', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
+  const html = render(state);
+
+  assert.match(html, /class="chat-message is-ai"/);
+  assert.match(html, /class="intent-summary"/);
+  assert.match(html, /确认替换清单/);
+  assert.match(html, /id="production-plan-form"/);
+  assert.doesNotMatch(html, /aria-label="候选视频任务"/);
+});
+
+test('the second inline form renders five mapping groups, applies natural-language changes without generating, and gates blockers', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' }, replicationMode: 'replace_product' });
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
+  state = updatePlanFromNaturalLanguage(state, '人物用 AI');
+  const html = render(state);
+
+  assert.match(html, /data-replacement-group="product"/);
+  assert.match(html, /data-replacement-group="localization"/);
+  assert.match(html, /data-replacement-group="person"/);
+  assert.match(html, /data-replacement-group="scene"/);
+  assert.match(html, /data-replacement-group="clip"/);
+  assert.match(html, /原对象[\s\S]*→[\s\S]*目标对象/);
+  assert.match(html, /人物库[\s\S]*上传[\s\S]*AI/);
+  assert.match(html, /受影响/);
+  assert.match(html, /1 条[\s\S]*3 条[\s\S]*5 条/);
+  assert.match(html, /确认替换方案并开始复刻/);
+  assert.match(html, /<button[^>]*disabled[^>]*>确认替换方案并开始复刻/);
+  assert.doesNotMatch(html, /aria-label="候选视频任务"/);
 });

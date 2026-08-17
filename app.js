@@ -13,6 +13,7 @@ import {
   reopenOrderConfiguration,
   cancelOrderConfigurationEdit,
   confirmProductionPlan,
+  confirmReplicationIntent,
   resolveMissingMaterial,
   selectCandidate,
   sendConversationMessage,
@@ -20,9 +21,15 @@ import {
   setCandidateView,
   startReferenceAnalysis,
   submitOrder,
+  submitReplicationIntent,
   toggleChangeGoal,
   togglePanel,
   updateOrderDraft,
+  updateIntentFromNaturalLanguage,
+  updateIntentStrategy,
+  updatePlanFromNaturalLanguage,
+  updateReplacementMapping,
+  applyReplacementGroupRule,
 } from './marketing-factory-model.mjs';
 import { renderMarketingFactory } from './marketing-factory-view.mjs';
 
@@ -151,6 +158,51 @@ function handleClick(event) {
     render();
     return;
   }
+  if (action === 'clear-quick-mode') {
+    updateTextField('replicationMode', '');
+    render();
+    return;
+  }
+  if (action === 'set-intent-strategy') {
+    state = updateIntentStrategy(state, target.dataset.group, target.dataset.value);
+    render();
+    return;
+  }
+  if (action === 'recognize-intent') {
+    const value = document.querySelector('[data-field="intentNaturalLanguage"]')?.value || '';
+    state = updateIntentFromNaturalLanguage(state, value);
+    render();
+    return;
+  }
+  if (action === 'confirm-replication-intent') {
+    state = confirmReplicationIntent(state);
+    render({ scrollConversation: true });
+    if (activeOrder()?.phase === 'analyzing') scheduleNextProgress(700);
+    return;
+  }
+  if (action === 'pick-replacement-target') {
+    const source = target.dataset.source || 'library';
+    const product = { source, name: source === 'upload' ? '新商品资料包.zip' : '便携式榨汁杯 Pro' };
+    state = updateReplacementMapping(state, target.dataset.group, { target: product, scope: 'all_exposures' });
+    render();
+    return;
+  }
+  if (action === 'set-replacement-strategy') {
+    state = applyReplacementGroupRule(state, target.dataset.group, { strategy: target.dataset.value });
+    render();
+    return;
+  }
+  if (action === 'set-replacement-source') {
+    state = applyReplacementGroupRule(state, 'person', { strategy: target.dataset.value === 'ai' ? 'ai' : 'replace', target: target.dataset.value === 'library' ? '人物库候选' : target.dataset.value === 'upload' ? '待上传人物素材' : '' });
+    render();
+    return;
+  }
+  if (action === 'apply-plan-language') {
+    const value = document.querySelector('[data-field="planNaturalLanguage"]')?.value || '';
+    state = updatePlanFromNaturalLanguage(state, value);
+    render();
+    return;
+  }
   if (action === 'set-replication-mode') {
     updateTextField('replicationMode', target.dataset.value);
     render();
@@ -213,11 +265,14 @@ function handleClick(event) {
 function handleSubmit(event) {
   if (event.target.id === 'reference-intake-form') {
     event.preventDefault();
-    state = startReferenceAnalysis(state);
+    state = submitReplicationIntent(state);
     const order = activeOrder();
     render({ scrollConversation: true });
-    if (order?.phase === 'analyzing') scheduleNextProgress(700);
-    else showNotice('请先补充参考视频，并选择本次复刻目的。');
+    if (order?.phase === 'intent_review' && !order.intentDraft.blockingItems.length) {
+      state = confirmReplicationIntent(state);
+      render({ scrollConversation: true });
+      if (activeOrder()?.phase === 'analyzing') scheduleNextProgress(700);
+    } else showNotice('请先补充参考视频，或处理 AI 标出的冲突。');
     return;
   }
   if (event.target.id === 'production-plan-form') {
@@ -261,6 +316,11 @@ function handleSubmit(event) {
 }
 
 function handleChange(event) {
+  if (event.target.dataset.planField === 'targetCountry') {
+    state = updateReplacementMapping(state, 'localization', { targetCountry: event.target.value });
+    render();
+    return;
+  }
   const field = event.target.dataset.field;
   if (!field) return;
   const value = event.target.value;

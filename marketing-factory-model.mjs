@@ -364,6 +364,30 @@ export function updateOrderDraft(state, patch) {
   });
 }
 
+export function updateIntentStrategy(state, group, strategy) {
+  if (!['person', 'scene', 'clip'].includes(group) || !['keep', 'replace', 'ai'].includes(strategy)) return state;
+  return updateActiveOrder(state, (order) => {
+    if (!['intake', 'intent_review', 'plan'].includes(order.phase) && !order.editingConfiguration) return order;
+    order.intentDraft.strategies[group] = strategy;
+    order.draft.goals[group] = strategy !== 'keep';
+    if (order.phase === 'plan' || order.editingConfiguration) {
+      order.replacementPlan[group] = { ...order.replacementPlan[group], strategy };
+    }
+    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
+    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    return order;
+  });
+}
+
+export function updateIntentFromNaturalLanguage(state, text) {
+  return updateActiveOrder(state, (order) => {
+    if (!['intake', 'intent_review'].includes(order.phase) && !order.editingConfiguration) return order;
+    order.intentDraft = parseReplicationIntent(text, order.intentDraft);
+    syncLegacyDraftFromIntent(order);
+    return order;
+  });
+}
+
 export function toggleChangeGoal(state, goal) {
   if (!GOAL_ORDER.includes(goal) || goal === 'product') return state;
   return updateActiveOrder(state, (order) => {
@@ -616,8 +640,8 @@ export function confirmProductionPlan(state) {
     if (order.phase !== 'plan' && !order.editingConfiguration) return order;
     const wasEditing = order.editingConfiguration;
     const missing = [];
-    if (!order.draft.market) missing.push('market');
-    if (order.draft.replicationMode === 'replace_product' && !order.draft.product.name) missing.push('product');
+    if (['same_product', 'custom'].includes(order.draft.replicationMode) && !order.draft.market) missing.push('market');
+    if (['replace_product', 'custom'].includes(order.draft.replicationMode) && !order.draft.product.name) missing.push('product');
     order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
     if (order.intentDraft.conflicts.length) missing.push(...order.intentDraft.conflicts);
     if (order.replacementPlan.status === 'invalidated') missing.push('replacementPlan');

@@ -30,6 +30,8 @@ import {
   toggleChangeGoal,
   togglePanel,
   updatePlanFromNaturalLanguage,
+  updateIntentStrategy,
+  updateIntentFromNaturalLanguage,
   updateReplacementMapping,
   updateOrderDraft,
 } from '../marketing-factory-model.mjs';
@@ -375,4 +377,28 @@ test('plan language and direct mapping updates operate on the five replacement g
   assert.equal(order.replacementPlan.person.strategy, 'replace');
   assert.match(order.replacementPlan.person.target, /拉丁裔年轻女性/);
   assert.deepEqual(Object.keys(order.replacementPlan).filter((key) => key !== 'blockingItems'), ['product', 'localization', 'person', 'scene', 'clip']);
+});
+
+test('setting an AI person strategy preserves AI through intent review and the replacement plan', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  state = updateIntentStrategy(state, 'person', 'ai');
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  state = completeAnalysis(state);
+  const order = state.orders[state.activeOrderId];
+
+  assert.equal(order.intentDraft.strategies.person, 'ai');
+  assert.equal(order.replacementPlan.person.strategy, 'ai');
+});
+
+test('intent natural language updates the first form without starting analysis', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateIntentFromNaturalLanguage(state, '投放巴西，人物用 AI，片段沿用');
+  const order = state.orders[state.activeOrderId];
+
+  assert.equal(order.phase, 'intake');
+  assert.equal(order.intentDraft.targetCountry, '巴西');
+  assert.equal(order.intentDraft.strategies.person, 'ai');
+  assert.equal(order.intentDraft.strategies.clip, 'keep');
 });
