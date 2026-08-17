@@ -378,10 +378,11 @@ test('plan language and direct mapping updates operate on the five replacement g
     target: { source: 'library', name: '便携式榨汁杯 Pro' },
     scope: 'all_exposures',
     exposureCount: 5,
+    inheritReference: false,
   });
   assert.equal(order.replacementPlan.person.strategy, 'replace');
   assert.match(order.replacementPlan.person.target, /拉丁裔年轻女性/);
-  assert.deepEqual(Object.keys(order.replacementPlan).filter((key) => !['blockingItems', 'affectedGroups'].includes(key)), ['product', 'localization', 'person', 'scene', 'clip']);
+  assert.deepEqual(Object.keys(order.replacementPlan).filter((key) => !['blockingItems', 'affectedGroups'].includes(key)), ['product', 'localization', 'person', 'scene', 'clip', 'objects']);
 });
 
 test('setting an AI person strategy preserves AI through intent review and the replacement plan', () => {
@@ -546,4 +547,149 @@ test('typed blocker resolutions change the matching model field and unlock only 
   order = state.orders[state.activeOrderId];
   assert.equal(order.replacementPlan.scene.target, '待上传替代素材');
   assert.deepEqual(order.replacementPlan.blockingItems, []);
+});
+
+test('conversation input synchronizes the real intent draft in intake and intent review without bypassing its gate', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  state = sendConversationMessage(state, '投放巴西，人物用 AI，场景换掉');
+  let order = state.orders[state.activeOrderId];
+
+  assert.equal(order.intentDraft.targetCountry, '巴西');
+  assert.equal(order.intentDraft.strategies.person, 'ai');
+  assert.equal(order.intentDraft.strategies.scene, 'replace');
+  assert.match(order.messages.at(-1).text, /同步到复刻配置/);
+
+  state = updateOrderDraft(state, {
+    replicationMode: 'replace_product',
+    product: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  state = submitReplicationIntent(state);
+  state = sendConversationMessage(state, '同商品，投放墨西哥');
+  order = state.orders[state.activeOrderId];
+
+  assert.equal(order.phase, 'intent_review');
+  assert.equal(order.intentDraft.quickMode, 'same_product');
+  assert.equal(order.intentDraft.targetCountry, '墨西哥');
+  assert.deepEqual(order.intentDraft.blockingItems, ['same_product_with_target_product']);
+});
+
+test('conversation input synchronizes the replacement plan in plan but remains an ordinary message while running', () => {
+  let state = createPlanOrder();
+  state = sendConversationMessage(state, '投放巴西，生成 5 条，人物用 AI，场景用 AI');
+  let order = state.orders[state.activeOrderId];
+
+  assert.equal(order.phase, 'plan');
+  assert.equal(order.intentDraft.targetCountry, '巴西');
+  assert.equal(order.replacementPlan.localization.targetCountry, '巴西');
+  assert.equal(order.replacementPlan.person.strategy, 'ai');
+  assert.equal(order.replacementPlan.scene.strategy, 'ai');
+  assert.deepEqual(order.replacementPlan.affectedGroups, ['localization', 'person', 'scene']);
+  assert.equal(order.candidates.length, 0);
+
+  state = confirmProductionPlan(state);
+  const before = structuredClone(state.orders[state.activeOrderId].replacementPlan);
+  state = sendConversationMessage(state, '投放墨西哥，人物用 AI');
+  order = state.orders[state.activeOrderId];
+
+  assert.equal(order.phase, 'running');
+  assert.deepEqual(order.replacementPlan, before);
+  assert.match(order.messages.at(-1).text, /我已记录这条修改要求/);
+  assert.doesNotMatch(order.messages.at(-1).text, /同步到复刻配置/);
+});
+
+test('replacement plans make reference inheritance explicit when shortcuts leave country or product unchanged', () => {
+  let replacementState = openReplicationTool(createDemoState(), 'welcome-card');
+  replacementState = updateOrderDraft(replacementState, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'replace_product',
+  });
+  replacementState = submitReplicationIntent(replacementState);
+  replacementState = confirmReplicationIntent(replacementState);
+  while (replacementState.orders[replacementState.activeOrderId].phase === 'analyzing') replacementState = advanceReferenceAnalysis(replacementState);
+  let order = replacementState.orders[replacementState.activeOrderId];
+
+  assert.equal(order.replacementPlan.localization.inheritReference, true);
+  assert.deepEqual(order.replacementPlan.blockingItems, ['product']);
+
+  let unchangedState = openReplicationTool(createDemoState(), 'welcome-card');
+  unchangedState = updateOrderDraft(unchangedState, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  unchangedState = submitReplicationIntent(unchangedState);
+  unchangedState = confirmReplicationIntent(unchangedState);
+  while (unchangedState.orders[unchangedState.activeOrderId].phase === 'analyzing') unchangedState = advanceReferenceAnalysis(unchangedState);
+  unchangedState = confirmProductionPlan(unchangedState);
+  order = unchangedState.orders[unchangedState.activeOrderId];
+
+  assert.equal(order.replacementPlan.product.inheritReference, true);
+  assert.equal(order.replacementPlan.localization.inheritReference, true);
+  assert.equal(order.phase, 'running');
+  assert.match(order.subtitle, /沿用参考视频/);
+  assert.doesNotMatch(order.subtitle, /^\s*·|·\s*$/);
+});
+
+test('replacement plan exposes deterministic object mappings and allows one object to differ from its group rule', () => {
+  let state = createPlanOrder();
+  let plan = state.orders[state.activeOrderId].replacementPlan;
+
+  assert.equal(plan.objects.filter((item) => item.group === 'person').length, 1);
+  assert.deepEqual(plan.objects.find((item) => item.id === 'person-01').source.shotIds, ['shot-01', 'shot-03', 'shot-06', 'shot-09']);
+  assert.equal(plan.objects.filter((item) => item.group === 'scene').length, 3);
+  assert.ok(plan.objects.filter((item) => item.group === 'clip').length >= 3);
+  assert.match(plan.objects.find((item) => item.id === 'clip-01').source.range.start, /^00:/);
+
+  state = updateReplacementMapping(state, 'scene', {
+    objectId: 'scene-kitchen',
+    objectPatch: { strategy: 'ai' },
+  });
+  plan = state.orders[state.activeOrderId].replacementPlan;
+  assert.equal(plan.objects.find((item) => item.id === 'scene-kitchen').strategy, 'ai');
+  assert.equal(plan.scene.strategy, 'keep');
+});
+
+test('natural language does not silently overwrite an explicit first-form strategy and produces a typed gate', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  state = updateIntentStrategy(state, 'person', 'keep');
+  state = updateIntentFromNaturalLanguage(state, '人物用 AI');
+  let order = state.orders[state.activeOrderId];
+
+  assert.equal(order.intentDraft.strategies.person, 'keep');
+  assert.deepEqual(order.intentDraft.strategyConflicts, [{
+    type: 'person_strategy_conflict', group: 'person', structured: 'keep', inferred: 'ai',
+  }]);
+
+  state = submitReplicationIntent(state);
+  order = state.orders[state.activeOrderId];
+  assert.deepEqual(order.intentDraft.blockingItems, ['person_strategy_conflict']);
+
+  state = updateIntentStrategy(state, 'person', 'ai');
+  order = state.orders[state.activeOrderId];
+  assert.deepEqual(order.intentDraft.strategyConflicts, []);
+  assert.deepEqual(order.intentDraft.blockingItems, []);
+});
+
+test('reference analysis replaces one progress message and can fail back to an editable retry state', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    market: '墨西哥',
+  });
+  state = startReferenceAnalysis(state);
+  state = advanceReferenceAnalysis(state);
+  let order = state.orders[state.activeOrderId];
+  assert.equal(order.messages.filter((message) => message.kind === 'progress').length, 1);
+  assert.equal(order.messages.find((message) => message.kind === 'progress').progress, 48);
+
+  state = advanceReferenceAnalysis(state, { fail: true });
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.phase, 'intake');
+  assert.equal(order.analysis.status, 'failed');
+  assert.equal(order.formCollapsed, false);
+  assert.match(order.messages.at(-1).text, /分析失败/);
+
+  state = startReferenceAnalysis(state);
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.phase, 'analyzing');
+  assert.equal(order.messages.filter((message) => message.kind === 'progress').length, 1);
 });

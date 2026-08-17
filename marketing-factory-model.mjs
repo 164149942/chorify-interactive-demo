@@ -43,6 +43,8 @@ function createIntentDraft() {
     targetCountry: '',
     targetProduct: { source: '', name: '' },
     strategies: { person: 'keep', scene: 'keep', clip: 'keep' },
+    strategyOrigins: { person: 'default', scene: 'default', clip: 'default' },
+    strategyConflicts: [],
     candidateCount: 3,
     naturalLanguage: '',
     understandingSummary: '',
@@ -53,17 +55,42 @@ function createIntentDraft() {
 
 function createReplacementPlan() {
   return {
-    product: { target: { source: '', name: '' }, scope: 'all_exposures' },
-    localization: { targetCountry: '', language: '', subtitleMode: '' },
+    product: { target: { source: '', name: '' }, scope: 'all_exposures', inheritReference: true },
+    localization: { targetCountry: '', language: '', subtitleMode: '', inheritReference: true },
     person: { strategy: 'keep', sourceCount: 0, target: '' },
     scene: { strategy: 'keep', sourceCount: 0, target: '' },
     clip: { strategy: 'keep', sourceCount: 0 },
+    objects: [],
   };
 }
 
 function normalizeCandidateCount(value) {
   const count = Number(value);
   return [1, 3, 5].includes(count) ? count : 3;
+}
+
+function getInheritance(intent) {
+  const mode = intent.quickMode || '';
+  return {
+    product: !intent.targetProduct?.name && ['same_product', ''].includes(mode),
+    localization: !intent.targetCountry && ['replace_product', ''].includes(mode),
+  };
+}
+
+function applyPlanInheritance(order) {
+  const inheritance = getInheritance(order.intentDraft);
+  order.replacementPlan.product = {
+    ...order.replacementPlan.product,
+    inheritReference: inheritance.product,
+  };
+  order.replacementPlan.localization = {
+    ...order.replacementPlan.localization,
+    inheritReference: inheritance.localization,
+  };
+}
+
+function strategyLabel(strategy) {
+  return { keep: '必须保持', replace: '必须更改', ai: '交给 AI 判断' }[strategy] || '未指定';
 }
 
 function syncLegacyDraftFromIntent(order) {
@@ -102,15 +129,81 @@ function createUnderstandingSummary(intent) {
     same_product_with_target_product: '同商品本地化不能同时指定目标商品',
   };
   const conflicts = getIntentConflicts(intent)
-    .map((conflict) => conflictLabels[conflict] || '存在待处理冲突')
+    .map((conflict) => {
+      if (conflictLabels[conflict]) return conflictLabels[conflict];
+      const typed = (intent.strategyConflicts || []).find((item) => item.type === conflict);
+      if (typed) return `${groupLabels[typed.group]}已明确选择${strategyLabel(typed.structured)}，但自然语言推断为${strategyLabel(typed.inferred)}`;
+      return '存在待处理冲突';
+    })
     .join('、') || '无';
   return `参考视频：${referenceLabel}；目标市场：${countryLabel}；必须更改：${groupsFor('replace')}；必须保持：${groupsFor('keep')}；交给 AI 判断：${groupsFor('ai')}；存在冲突：${conflicts}。`;
 }
 
 function getIntentConflicts(intent) {
-  return intent.quickMode === 'same_product' && intent.targetProduct.name
-    ? ['same_product_with_target_product']
-    : [];
+  const conflicts = [];
+  if (intent.quickMode === 'same_product' && intent.targetProduct.name) conflicts.push('same_product_with_target_product');
+  conflicts.push(...(intent.strategyConflicts || []).map((item) => item.type));
+  return [...new Set(conflicts)];
+}
+
+function refreshIntentGate(order) {
+  order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+  order.intentDraft.blockingItems = [
+    ...(order.intentDraft.reference.name ? [] : ['reference']),
+    ...order.intentDraft.conflicts,
+  ];
+  order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
+}
+
+function objectTargetName(target) {
+  if (typeof target === 'string') return target;
+  return target?.name || '';
+}
+
+function createReplacementObjects(summary, intent) {
+  const localization = MARKET_LOCALIZATION[intent.targetCountry] || { language: '', subtitleMode: '' };
+  return [
+    {
+      id: 'product-main', group: 'product', scope: 'all_exposures', strategy: '',
+      source: { label: '商品主体与包装露出', shotIds: ['shot-01', 'shot-03', 'shot-05', 'shot-08', 'shot-11'] },
+      target: clone(intent.targetProduct),
+    },
+    {
+      id: 'localization-01', group: 'localization', strategy: '',
+      source: { label: '字幕、口播与屏幕文字', shotIds: ['shot-01', 'shot-02', 'shot-04', 'shot-06', 'shot-08', 'shot-10', 'shot-11', 'shot-12'] },
+      target: { source: intent.targetCountry ? 'market' : '', name: intent.targetCountry || '', ...localization },
+    },
+    {
+      id: 'person-01', group: 'person', strategy: '',
+      source: { label: '主出镜人物', shotIds: ['shot-01', 'shot-03', 'shot-06', 'shot-09'] },
+      target: { source: '', name: '' },
+    },
+    {
+      id: 'scene-kitchen', group: 'scene', strategy: '',
+      source: { label: '厨房操作台', shotIds: ['shot-01', 'shot-02', 'shot-03'] },
+      target: { source: '', name: '' },
+    },
+    {
+      id: 'scene-table', group: 'scene', strategy: '',
+      source: { label: '餐桌产品演示', shotIds: ['shot-04', 'shot-05', 'shot-06'] },
+      target: { source: '', name: '' },
+    },
+    {
+      id: 'scene-commute', group: 'scene', strategy: '',
+      source: { label: '通勤随拍', shotIds: ['shot-07', 'shot-08', 'shot-09'] },
+      target: { source: '', name: '' },
+    },
+    ...[
+      ['clip-01', '开场钩子', '00:00', '00:07', ['shot-01', 'shot-02', 'shot-03']],
+      ['clip-02', '功能演示', '00:07', '00:14', ['shot-04', 'shot-05', 'shot-06']],
+      ['clip-03', '使用场景', '00:14', '00:21', ['shot-07', 'shot-08', 'shot-09']],
+      ['clip-04', '收尾召唤', '00:21', '00:28', ['shot-10', 'shot-11', 'shot-12']],
+    ].map(([id, label, start, end, shotIds]) => ({
+      id, group: 'clip', strategy: '',
+      source: { label, shotIds, range: { start, end } },
+      target: { source: '', name: '' },
+    })),
+  ];
 }
 
 // The production confirmation gate lives in the model so the form and the
@@ -119,12 +212,16 @@ function recomputeReplacementPlanBlockers(order) {
   const plan = order.replacementPlan;
   if (!plan || plan.status === 'invalidated') return;
   const blockers = [];
-  const mode = order.intentDraft.quickMode || order.draft.replicationMode;
-  if (['replace_product', 'custom'].includes(mode) && !plan.product?.target?.name) blockers.push('product');
-  if (['same_product', 'custom'].includes(mode) && !plan.localization?.targetCountry) blockers.push('market');
+  if (!plan.product?.inheritReference && !plan.product?.target?.name) blockers.push('product');
+  if (!plan.localization?.inheritReference && !plan.localization?.targetCountry) blockers.push('market');
   blockers.push(...getIntentConflicts(order.intentDraft));
   for (const group of ['person', 'scene', 'clip']) {
     if (plan[group]?.strategy === 'replace' && !plan[group]?.target) blockers.push(`${group}_material`);
+  }
+  for (const object of plan.objects || []) {
+    if (['person', 'scene', 'clip'].includes(object.group) && object.strategy === 'replace' && !objectTargetName(object.target)) {
+      blockers.push(`${object.id}_material`);
+    }
   }
   plan.blockingItems = [...new Set(blockers)];
 }
@@ -132,16 +229,19 @@ function recomputeReplacementPlanBlockers(order) {
 function buildReplacementPlan(analysis, intent) {
   const summary = analysis.summary || {};
   const localization = MARKET_LOCALIZATION[intent.targetCountry] || { language: '', subtitleMode: '' };
+  const inheritance = getInheritance(intent);
   return {
     product: {
       target: clone(intent.targetProduct),
       scope: 'all_exposures',
       exposureCount: summary.productExposureCount || 0,
+      inheritReference: inheritance.product,
     },
     localization: {
       targetCountry: intent.targetCountry,
       language: localization.language,
       subtitleMode: localization.subtitleMode,
+      inheritReference: inheritance.localization,
     },
     person: {
       strategy: intent.strategies.person,
@@ -155,6 +255,7 @@ function buildReplacementPlan(analysis, intent) {
     },
     scene: { strategy: intent.strategies.scene, sourceCount: summary.sceneCount || 0, target: '' },
     clip: { strategy: intent.strategies.clip, sourceCount: summary.shotCount || 0, target: '' },
+    objects: createReplacementObjects(summary, intent),
   };
 }
 
@@ -394,9 +495,11 @@ export function updateOrderDraft(state, patch) {
     }
     if (Object.hasOwn(patch, 'personMode')) {
       order.intentDraft.strategies.person = patch.personMode === 'keep' ? 'keep' : 'replace';
+      order.intentDraft.strategyOrigins.person = 'structured';
+      order.intentDraft.strategyConflicts = (order.intentDraft.strategyConflicts || []).filter((item) => item.group !== 'person');
     }
-    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
-    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
+    if (order.phase === 'plan' || order.editingConfiguration) applyPlanInheritance(order);
+    refreshIntentGate(order);
     order.validationErrors = order.validationErrors.filter((field) => !Object.hasOwn(patch, field));
     return order;
   });
@@ -411,14 +514,13 @@ export function clearIntentTargetProduct(state) {
     order.draft.product = { source: '', name: '' };
     if (order.phase === 'plan' || order.editingConfiguration) {
       order.replacementPlan.product = { ...order.replacementPlan.product, target: { source: '', name: '' } };
+      order.replacementPlan.objects = (order.replacementPlan.objects || []).map((object) => object.group === 'product'
+        ? { ...object, target: { source: '', name: '' } }
+        : object);
+      applyPlanInheritance(order);
       recomputeReplacementPlanBlockers(order);
     }
-    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
-    order.intentDraft.blockingItems = [
-      ...(order.intentDraft.reference.name ? [] : ['reference']),
-      ...order.intentDraft.conflicts,
-    ];
-    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
+    refreshIntentGate(order);
     return order;
   });
 }
@@ -428,13 +530,14 @@ export function updateIntentStrategy(state, group, strategy) {
   return updateActiveOrder(state, (order) => {
     if (!['intake', 'intent_review', 'plan'].includes(order.phase) && !order.editingConfiguration) return order;
     order.intentDraft.strategies[group] = strategy;
+    order.intentDraft.strategyOrigins[group] = 'structured';
+    order.intentDraft.strategyConflicts = (order.intentDraft.strategyConflicts || []).filter((item) => item.group !== group);
     order.draft.goals[group] = strategy !== 'keep';
     if (order.phase === 'plan' || order.editingConfiguration) {
       order.replacementPlan[group] = { ...order.replacementPlan[group], strategy };
       recomputeReplacementPlanBlockers(order);
     }
-    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
-    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    refreshIntentGate(order);
     recomputeReplacementPlanBlockers(order);
     return order;
   });
@@ -445,6 +548,8 @@ export function updateIntentFromNaturalLanguage(state, text) {
     if (!['intake', 'intent_review'].includes(order.phase) && !order.editingConfiguration) return order;
     order.intentDraft = parseReplicationIntent(text, order.intentDraft);
     syncLegacyDraftFromIntent(order);
+    if (order.phase === 'plan' || order.editingConfiguration) applyPlanInheritance(order);
+    refreshIntentGate(order);
     return order;
   });
 }
@@ -456,7 +561,10 @@ export function toggleChangeGoal(state, goal) {
     order.draft.goals[goal] = !order.draft.goals[goal];
     if (['person', 'scene', 'clip'].includes(goal)) {
       order.intentDraft.strategies[goal] = order.draft.goals[goal] ? 'replace' : 'keep';
+      order.intentDraft.strategyOrigins[goal] = 'structured';
+      order.intentDraft.strategyConflicts = (order.intentDraft.strategyConflicts || []).filter((item) => item.group !== goal);
     }
+    refreshIntentGate(order);
     return order;
   });
 }
@@ -513,7 +621,24 @@ function createReferenceAnalysisSummary() {
   };
 }
 
-export function parseReplicationIntent(text, currentIntent = {}) {
+function applyInferredStrategy(base, group, inferred, { respectStructuredStrategies = true } = {}) {
+  const structured = base.strategies[group];
+  const isStructured = base.strategyOrigins?.[group] === 'structured';
+  base.strategyConflicts = (base.strategyConflicts || []).filter((item) => item.group !== group);
+  if (respectStructuredStrategies && isStructured && structured !== inferred) {
+    base.strategyConflicts.push({
+      type: `${group}_strategy_conflict`,
+      group,
+      structured,
+      inferred,
+    });
+    return;
+  }
+  base.strategies[group] = inferred;
+  base.strategyOrigins[group] = isStructured ? 'structured' : 'inferred';
+}
+
+export function parseReplicationIntent(text, currentIntent = {}, options = {}) {
   const input = String(text || '').trim();
   const base = {
     ...createIntentDraft(),
@@ -521,6 +646,8 @@ export function parseReplicationIntent(text, currentIntent = {}) {
     reference: clone(currentIntent.reference || { source: '', name: '' }),
     targetProduct: clone(currentIntent.targetProduct || { source: '', name: '' }),
     strategies: { ...createIntentDraft().strategies, ...clone(currentIntent.strategies || {}) },
+    strategyOrigins: { ...createIntentDraft().strategyOrigins, ...clone(currentIntent.strategyOrigins || {}) },
+    strategyConflicts: clone(currentIntent.strategyConflicts || []),
   };
   const countries = Object.keys(MARKET_LOCALIZATION);
   const country = countries.find((item) => input.includes(item));
@@ -530,18 +657,25 @@ export function parseReplicationIntent(text, currentIntent = {}) {
   if (input.includes('同商品')) base.quickMode = 'same_product';
   if (input.includes('替换商品') || input.includes('换商品')) base.quickMode = 'replace_product';
   if (input.includes('自定义')) base.quickMode = 'custom';
-  if (input.includes('人物换') || input.includes('替换人物')) base.strategies.person = 'replace';
-  if (input.includes('人物沿用')) base.strategies.person = 'keep';
-  if (input.includes('人物使用 AI') || input.includes('人物用 AI')) base.strategies.person = 'ai';
-  if (input.includes('场景换') || input.includes('替换场景')) base.strategies.scene = 'replace';
-  if (input.includes('场景沿用')) base.strategies.scene = 'keep';
-  if (input.includes('场景使用 AI') || input.includes('场景用 AI')) base.strategies.scene = 'ai';
-  if (input.includes('片段换') || input.includes('替换片段')) base.strategies.clip = 'replace';
-  if (input.includes('片段沿用')) base.strategies.clip = 'keep';
-  if (input.includes('片段使用 AI') || input.includes('片段用 AI')) base.strategies.clip = 'ai';
+  if (input.includes('人物换') || input.includes('替换人物')) applyInferredStrategy(base, 'person', 'replace', options);
+  if (input.includes('人物沿用')) applyInferredStrategy(base, 'person', 'keep', options);
+  if (input.includes('人物使用 AI') || input.includes('人物用 AI')) applyInferredStrategy(base, 'person', 'ai', options);
+  if (input.includes('场景换') || input.includes('替换场景') || input.includes('替换人物和场景')) applyInferredStrategy(base, 'scene', 'replace', options);
+  if (input.includes('场景沿用')) applyInferredStrategy(base, 'scene', 'keep', options);
+  if (input.includes('场景使用 AI') || input.includes('场景用 AI')) applyInferredStrategy(base, 'scene', 'ai', options);
+  if (input.includes('片段换') || input.includes('替换片段')) applyInferredStrategy(base, 'clip', 'replace', options);
+  if (input.includes('片段沿用')) applyInferredStrategy(base, 'clip', 'keep', options);
+  if (input.includes('片段使用 AI') || input.includes('片段用 AI')) applyInferredStrategy(base, 'clip', 'ai', options);
+  if (input.includes('其他都保持原视频')) {
+    for (const group of ['person', 'scene', 'clip']) applyInferredStrategy(base, group, 'keep', options);
+  }
   base.candidateCount = normalizeCandidateCount(base.candidateCount);
   base.naturalLanguage = input;
   base.conflicts = getIntentConflicts(base);
+  base.blockingItems = [
+    ...(base.reference.name ? [] : ['reference']),
+    ...base.conflicts,
+  ];
   base.understandingSummary = createUnderstandingSummary(base);
   return base;
 }
@@ -549,12 +683,7 @@ export function parseReplicationIntent(text, currentIntent = {}) {
 export function submitReplicationIntent(state) {
   return updateActiveOrder(state, (order) => {
     if (!['intake', 'intent_review'].includes(order.phase) && !order.editingConfiguration) return order;
-    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
-    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
-    order.intentDraft.blockingItems = [
-      ...(order.intentDraft.reference.name ? [] : ['reference']),
-      ...order.intentDraft.conflicts,
-    ];
+    refreshIntentGate(order);
     order.phase = 'intent_review';
     order.status = order.intentDraft.blockingItems.length ? '补充复刻意图' : '复刻意图待确认';
     order.formCollapsed = false;
@@ -565,12 +694,7 @@ export function submitReplicationIntent(state) {
 export function confirmReplicationIntent(state) {
   const reviewed = updateActiveOrder(state, (order) => {
     if (order.phase !== 'intent_review') return order;
-    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
-    order.intentDraft.understandingSummary = createUnderstandingSummary(order.intentDraft);
-    order.intentDraft.blockingItems = [
-      ...(order.intentDraft.reference.name ? [] : ['reference']),
-      ...order.intentDraft.conflicts,
-    ];
+    refreshIntentGate(order);
     if (order.intentDraft.blockingItems.length) return order;
     order.draft = { ...order.draft, replicationMode: order.intentDraft.quickMode };
     syncLegacyDraftFromIntent(order);
@@ -584,18 +708,41 @@ export function updateReplacementMapping(state, group, patch) {
   if (!['product', 'localization', 'person', 'scene', 'clip'].includes(group)) return state;
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
-    order.replacementPlan[group] = { ...order.replacementPlan[group], ...clone(patch) };
-    if (group === 'localization' && patch.targetCountry) {
-      const localization = MARKET_LOCALIZATION[patch.targetCountry] || { language: '', subtitleMode: '' };
+    const nextPatch = clone(patch);
+    const objectId = nextPatch.objectId;
+    const objectPatch = nextPatch.objectPatch;
+    delete nextPatch.objectId;
+    delete nextPatch.objectPatch;
+    if (objectId && objectPatch) {
+      order.replacementPlan.objects = (order.replacementPlan.objects || []).map((object) => {
+        if (object.id !== objectId || object.group !== group) return object;
+        const safePatch = {
+          ...(Object.hasOwn(objectPatch, 'strategy') ? { strategy: objectPatch.strategy } : {}),
+          ...(Object.hasOwn(objectPatch, 'target') ? { target: clone(objectPatch.target) } : {}),
+        };
+        return { ...object, ...safePatch };
+      });
+    } else {
+      order.replacementPlan[group] = { ...order.replacementPlan[group], ...nextPatch };
+    }
+    if (group === 'localization' && nextPatch.targetCountry) {
+      const localization = MARKET_LOCALIZATION[nextPatch.targetCountry] || { language: '', subtitleMode: '' };
       order.replacementPlan.localization = { ...order.replacementPlan.localization, targetCountry: patch.targetCountry, ...localization };
-      order.intentDraft.targetCountry = patch.targetCountry;
+      order.replacementPlan.objects = (order.replacementPlan.objects || []).map((object) => object.group === 'localization'
+        ? { ...object, target: { source: 'market', name: nextPatch.targetCountry, ...localization } }
+        : object);
+      order.intentDraft.targetCountry = nextPatch.targetCountry;
       syncLegacyDraftFromIntent(order);
     }
-    if (group === 'product' && patch.target) {
-      order.intentDraft.targetProduct = clone(patch.target);
+    if (group === 'product' && nextPatch.target) {
+      order.intentDraft.targetProduct = clone(nextPatch.target);
+      order.replacementPlan.objects = (order.replacementPlan.objects || []).map((object) => object.group === 'product'
+        ? { ...object, target: clone(nextPatch.target) }
+        : object);
       syncLegacyDraftFromIntent(order);
     }
-    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    applyPlanInheritance(order);
+    refreshIntentGate(order);
     recomputeReplacementPlanBlockers(order);
     return order;
   });
@@ -613,7 +760,7 @@ export function updatePlanFromNaturalLanguage(state, text) {
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'plan' && !(order.editingConfiguration && order.replacementPlan.status !== 'invalidated')) return order;
     const before = Object.fromEntries(['localization', 'person', 'scene', 'clip'].map((group) => [group, JSON.stringify(order.replacementPlan[group])]));
-    order.intentDraft = parseReplicationIntent(text, order.intentDraft);
+    order.intentDraft = parseReplicationIntent(text, order.intentDraft, { respectStructuredStrategies: false });
     syncLegacyDraftFromIntent(order);
     const localization = MARKET_LOCALIZATION[order.intentDraft.targetCountry] || { language: '', subtitleMode: '' };
     order.replacementPlan.localization = {
@@ -621,13 +768,17 @@ export function updatePlanFromNaturalLanguage(state, text) {
       targetCountry: order.intentDraft.targetCountry,
       ...localization,
     };
+    order.replacementPlan.objects = (order.replacementPlan.objects || []).map((object) => object.group === 'localization'
+      ? { ...object, target: { source: order.intentDraft.targetCountry ? 'market' : '', name: order.intentDraft.targetCountry || '', ...localization } }
+      : object);
     for (const group of ['person', 'scene', 'clip']) {
       order.replacementPlan[group] = {
         ...order.replacementPlan[group],
         strategy: order.intentDraft.strategies[group],
       };
     }
-    order.intentDraft.conflicts = getIntentConflicts(order.intentDraft);
+    applyPlanInheritance(order);
+    refreshIntentGate(order);
     order.replacementPlan.affectedGroups = ['localization', 'person', 'scene', 'clip']
       .filter((group) => before[group] !== JSON.stringify(order.replacementPlan[group]));
     recomputeReplacementPlanBlockers(order);
@@ -638,12 +789,36 @@ export function updatePlanFromNaturalLanguage(state, text) {
 export function resolveReplacementPlanBlocker(state, blocker, resolution) {
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'plan') return order;
+    const object = (order.replacementPlan.objects || []).find((item) => blocker === `${item.id}_material`);
+    if (object) {
+      const target = resolution === 'upload' ? { source: 'upload', name: '待上传替代素材' } : { source: '', name: '' };
+      order.replacementPlan.objects = order.replacementPlan.objects.map((item) => item.id === object.id
+        ? { ...item, strategy: resolution === 'keep' ? 'keep' : resolution === 'ai' ? 'ai' : 'replace', target }
+        : item);
+      recomputeReplacementPlanBlockers(order);
+      return order;
+    }
     const group = ['person', 'scene', 'clip'].find((item) => String(blocker).includes(item)) || 'clip';
     if (resolution === 'ai') order.replacementPlan[group] = { ...order.replacementPlan[group], strategy: 'ai' };
     if (resolution === 'upload') order.replacementPlan[group] = { ...order.replacementPlan[group], strategy: 'replace', target: '待上传替代素材' };
     if (resolution === 'keep') order.replacementPlan[group] = { ...order.replacementPlan[group], strategy: 'keep', keepLimitAcknowledged: true };
     recomputeReplacementPlanBlockers(order);
     return order;
+  });
+}
+
+function updateReferenceAnalysisProgressMessage(order, progress) {
+  const message = order.messages.find((item) => item.kind === 'progress' && item.analysisProgress);
+  if (message) {
+    message.progress = progress;
+    return;
+  }
+  appendMessage(order, {
+    role: 'assistant',
+    kind: 'progress',
+    analysisProgress: true,
+    text: '正在读取镜头结构、商品露出、人物、场景、字幕和口播。分析完成后，我会只展示这条视频实际需要配置的项目。',
+    progress,
   });
 }
 
@@ -656,6 +831,7 @@ export function startReferenceAnalysis(state, { allowEmptyQuickMode = false } = 
     order.validationErrors = missing;
     if (missing.length) return order;
 
+    const retrying = order.analysis.status === 'failed';
     order.phase = 'analyzing';
     order.status = '正在分析参考视频';
     order.formCollapsed = true;
@@ -663,29 +839,44 @@ export function startReferenceAnalysis(state, { allowEmptyQuickMode = false } = 
     order.referenceAnalysis = clone(order.analysis);
     order.panes.results = false;
     order.panes.detail = false;
-    appendMessage(order, {
-      role: 'user',
-      kind: 'summary',
-      text: `分析参考视频：${order.draft.reference.name}。复刻目的：${order.draft.replicationMode === 'same_product' ? '同商品跨国家本地化' : order.draft.replicationMode === 'replace_product' ? '替换为另一款商品' : '自定义调整'}。`,
-    });
-    appendMessage(order, {
-      role: 'assistant',
-      kind: 'progress',
-      text: '正在读取镜头结构、商品露出、人物、场景、字幕和口播。分析完成后，我会只展示这条视频实际需要配置的项目。',
-      progress: 18,
-    });
+    if (!retrying) {
+      appendMessage(order, {
+        role: 'user',
+        kind: 'summary',
+        text: `分析参考视频：${order.draft.reference.name}。复刻目的：${order.draft.replicationMode === 'same_product' ? '同商品跨国家本地化' : order.draft.replicationMode === 'replace_product' ? '替换为另一款商品' : '自定义调整'}。`,
+      });
+    }
+    updateReferenceAnalysisProgressMessage(order, 18);
     return order;
   });
 }
 
-export function advanceReferenceAnalysis(state) {
+export function advanceReferenceAnalysis(state, { fail = false } = {}) {
   return updateActiveOrder(state, (order) => {
     if (order.phase !== 'analyzing') return order;
+    if (fail) {
+      order.analysis = {
+        ...order.analysis,
+        status: 'failed',
+        error: '参考视频分析暂时失败，请重试。',
+      };
+      order.referenceAnalysis = clone(order.analysis);
+      order.phase = 'intake';
+      order.status = '参考视频分析失败';
+      order.formCollapsed = false;
+      appendMessage(order, {
+        role: 'assistant',
+        kind: 'result',
+        text: '分析失败：参考视频暂时无法完成解析。已保留你的复刻意图，请重试。',
+      });
+      return order;
+    }
     if (order.analysis.step === 0) {
       order.analysis.step = 1;
       order.analysis.progress = 48;
       order.status = '正在识别可替换对象';
       order.referenceAnalysis = clone(order.analysis);
+      updateReferenceAnalysisProgressMessage(order, 48);
       return order;
     }
     if (order.analysis.step === 1) {
@@ -693,10 +884,12 @@ export function advanceReferenceAnalysis(state) {
       order.analysis.progress = 78;
       order.status = '正在生成生产配置';
       order.referenceAnalysis = clone(order.analysis);
+      updateReferenceAnalysisProgressMessage(order, 78);
       return order;
     }
     order.analysis = { status: 'completed', step: 3, progress: 100, summary: createReferenceAnalysisSummary() };
     order.referenceAnalysis = clone(order.analysis);
+    updateReferenceAnalysisProgressMessage(order, 100);
     order.replacementPlan = buildReplacementPlan(order.referenceAnalysis, order.intentDraft);
     if (order.replacementPlan.person.strategy === 'replace' && order.draft.personDescription) {
       order.replacementPlan.person.target = order.draft.personDescription;
@@ -714,6 +907,18 @@ export function advanceReferenceAnalysis(state) {
     });
     return order;
   });
+}
+
+function productionSummaryLabels(order) {
+  const plan = order.replacementPlan || createReplacementPlan();
+  const mode = order.intentDraft.quickMode || order.draft.replicationMode;
+  const product = plan.product?.inheritReference
+    ? (mode === 'same_product' ? '沿用原商品' : '沿用参考视频')
+    : plan.product?.target?.name || order.draft.product.name || '待选择目标商品';
+  const market = plan.localization?.inheritReference
+    ? (mode === 'replace_product' ? '沿用原国家' : '沿用参考视频')
+    : plan.localization?.targetCountry || order.draft.market || '待选择国家';
+  return { product, market };
 }
 
 export function confirmProductionPlan(state) {
@@ -737,8 +942,8 @@ export function confirmProductionPlan(state) {
     order.submittedDraft = clone(order.draft);
     order.submittedIntentDraft = clone(order.intentDraft);
     order.submittedReplacementPlan = clone(order.replacementPlan);
-    const productLabel = order.draft.replicationMode === 'same_product' ? '沿用原商品' : order.draft.product.name || '按自定义方案';
-    order.subtitle = `${order.draft.market} · ${productLabel}`;
+    const { product: productLabel, market: marketLabel } = productionSummaryLabels(order);
+    order.subtitle = `${marketLabel} · ${productLabel}`;
     order.candidates = createCandidateSlots(order.id, order.draft.candidateCount);
     order.selectedCandidateId = null;
     order.pendingAction = null;
@@ -749,7 +954,7 @@ export function confirmProductionPlan(state) {
     appendMessage(order, {
       role: 'user',
       kind: 'summary',
-      text: `${wasEditing ? '更新' : '确认'}生产方案：${productLabel}，投放 ${order.draft.market}，生成 ${order.draft.candidateCount} 条候选视频。`,
+      text: `${wasEditing ? '更新' : '确认'}生产方案：${productLabel}，投放 ${marketLabel}，生成 ${order.draft.candidateCount} 条候选视频。`,
     });
     appendMessage(order, {
       role: 'assistant',
@@ -1005,44 +1210,40 @@ export function togglePanel(state, panel, explicitValue) {
   });
 }
 
+function applyConversationCompatibilityDetails(order, text) {
+  if (text.includes('拉丁裔年轻女性')) {
+    order.draft.personDescription = '拉丁裔年轻女性，自然妆容，真实生活方式创作者';
+  }
+  if (text.includes('Logo') || text.includes('品牌')) order.draft.goals.brand = true;
+  if (text.includes('其他都保持原视频')) order.draft.goals.brand = false;
+}
+
 export function sendConversationMessage(state, text) {
   const cleanText = String(text || '').trim();
   if (!cleanText) return state;
-  return updateActiveOrder(state, (order) => {
+  const initialOrder = state.activeOrderId ? state.orders[state.activeOrderId] : null;
+  if (!initialOrder) return state;
+
+  let next = state;
+  let synchronized = false;
+  if (['intake', 'intent_review'].includes(initialOrder.phase) || initialOrder.editingConfiguration) {
+    next = updateIntentFromNaturalLanguage(next, cleanText);
+    synchronized = true;
+  } else if (initialOrder.phase === 'plan') {
+    next = updatePlanFromNaturalLanguage(next, cleanText);
+    synchronized = true;
+  }
+
+  return updateActiveOrder(next, (order) => {
+    if (synchronized) applyConversationCompatibilityDetails(order, cleanText);
     appendMessage(order, { role: 'user', kind: 'message', text: cleanText });
-    if (['intake', 'plan'].includes(order.phase) || order.editingConfiguration) {
-      const markets = Object.keys(MARKET_LOCALIZATION);
-      const market = markets.find((item) => cleanText.includes(item));
-      if (market) {
-        order.draft.market = market;
-        order.draft.language = MARKET_LOCALIZATION[market].language;
-        order.draft.subtitleMode = MARKET_LOCALIZATION[market].subtitleMode;
-      }
-      const countMatch = cleanText.match(/(?:生成|做)\s*([135])\s*条/);
-      if (countMatch) order.draft.candidateCount = Number(countMatch[1]);
-      if (cleanText.includes('人物')) order.draft.goals.person = true;
-      if (cleanText.includes('拉丁裔年轻女性')) order.draft.personDescription = '拉丁裔年轻女性，自然妆容，真实生活方式创作者';
-      if (cleanText.includes('场景')) order.draft.goals.scene = true;
-      if (cleanText.includes('素材片段') || cleanText.includes('视频片段')) order.draft.goals.clip = true;
-      if (cleanText.includes('Logo') || cleanText.includes('品牌')) order.draft.goals.brand = true;
-      if (cleanText.includes('其他都保持原视频')) {
-        order.draft.goals.person = false;
-        order.draft.goals.scene = false;
-        order.draft.goals.clip = false;
-        order.draft.goals.brand = false;
-      }
-      appendMessage(order, {
-        role: 'assistant',
-        kind: 'message',
-        text: '已把这条要求同步到复刻配置。你仍可以直接修改下方表单，二者会保持一致。',
-      });
-    } else {
-      appendMessage(order, {
-        role: 'assistant',
-        kind: 'message',
-        text: '我已记录这条修改要求。已生成结果会保留；涉及正在生成的候选时，我会先展示影响范围再继续。',
-      });
-    }
+    appendMessage(order, {
+      role: 'assistant',
+      kind: 'message',
+      text: synchronized
+        ? '已把这条要求同步到复刻配置。你仍可以直接修改下方表单，二者会保持一致。'
+        : '我已记录这条修改要求。已生成结果会保留；涉及正在生成的候选时，我会先展示影响范围再继续。',
+    });
     return order;
   });
 }
