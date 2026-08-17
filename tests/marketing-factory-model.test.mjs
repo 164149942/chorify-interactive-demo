@@ -11,7 +11,9 @@ import {
   openOrder,
   resolveMissingMaterial,
   approveCandidate,
+  applyReplacementGroupRule,
   exportCandidate,
+  parseReplicationIntent,
   requestCandidateRevision,
   reopenOrderConfiguration,
   cancelOrderConfigurationEdit,
@@ -22,6 +24,8 @@ import {
   submitOrder,
   toggleChangeGoal,
   togglePanel,
+  updatePlanFromNaturalLanguage,
+  updateReplacementMapping,
   updateOrderDraft,
 } from '../marketing-factory-model.mjs';
 
@@ -298,4 +302,52 @@ test('candidate review, revision and export preserve an auditable version state'
   candidate = state.orders[state.activeOrderId].candidates[0];
   assert.equal(candidate.status, 'exported');
   assert.equal(candidate.exported, true);
+});
+
+test('natural-language intent parsing keeps the target market and product when no shortcut is chosen', () => {
+  const parsed = parseReplicationIntent('人物换成拉丁裔年轻女性，场景沿用，片段使用 AI', {
+    targetCountry: '墨西哥',
+    targetProduct: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+
+  assert.equal(parsed.quickMode, '');
+  assert.equal(parsed.targetCountry, '墨西哥');
+  assert.deepEqual(parsed.targetProduct, { source: 'library', name: '便携式榨汁杯 Pro' });
+  assert.equal(parsed.strategies.person, 'replace');
+  assert.equal(parsed.strategies.scene, 'keep');
+  assert.equal(parsed.strategies.clip, 'ai');
+});
+
+test('natural-language intent parsing flags a same-product shortcut that conflicts with a replacement product', () => {
+  const parsed = parseReplicationIntent('同商品跨国家本地化', {
+    targetProduct: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+
+  assert.deepEqual(parsed.conflicts, ['same_product_with_target_product']);
+});
+
+test('plan language and direct mapping updates operate on the five replacement groups', () => {
+  let state = createOrder(createDemoState());
+  state = updatePlanFromNaturalLanguage(state, '投放巴西，生成 5 条，人物换成拉丁裔年轻女性');
+  state = updateReplacementMapping(state, 'product', {
+    target: { source: 'library', name: '便携式榨汁杯 Pro' },
+    scope: 'all_exposures',
+  });
+  state = applyReplacementGroupRule(state, 'person', {
+    strategy: 'replace',
+    target: '拉丁裔年轻女性，自然妆容，真实生活方式创作者',
+  });
+
+  const order = state.orders[state.activeOrderId];
+  assert.equal(order.intentDraft.targetCountry, '巴西');
+  assert.equal(order.intentDraft.candidateCount, 5);
+  assert.equal(order.replacementPlan.localization.targetCountry, '巴西');
+  assert.equal(order.replacementPlan.localization.language, '葡萄牙语');
+  assert.deepEqual(order.replacementPlan.product, {
+    target: { source: 'library', name: '便携式榨汁杯 Pro' },
+    scope: 'all_exposures',
+  });
+  assert.equal(order.replacementPlan.person.strategy, 'replace');
+  assert.match(order.replacementPlan.person.target, /拉丁裔年轻女性/);
+  assert.deepEqual(Object.keys(order.replacementPlan), ['product', 'localization', 'person', 'scene', 'clip']);
 });

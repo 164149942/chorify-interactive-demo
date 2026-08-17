@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 
 import {
   advanceReferenceAnalysis,
+  applyReplacementGroupRule,
+  confirmReplicationIntent,
   confirmProductionPlan,
   createDemoState,
   getMarketingFactoryViewModel,
   openReplicationTool,
+  reopenOrderConfiguration,
+  submitReplicationIntent,
   startReferenceAnalysis,
   updateOrderDraft,
 } from '../marketing-factory-model.mjs';
@@ -95,4 +99,53 @@ test('the chat renders a compact intake first and a data-driven second form afte
   assert.match(planHtml, /检测到人物/);
   assert.match(planHtml, /沿用参考视频中的商品/);
   assert.match(planHtml, /建议补充，不阻塞生产/);
+});
+
+test('intent review blocks analysis until its required reference and conflict are cleared', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = submitReplicationIntent(state);
+  let order = activeOrder(state);
+
+  assert.equal(order.phase, 'intent_review');
+  assert.deepEqual(order.intentDraft.blockingItems, ['reference']);
+  assert.match(order.intentDraft.understandingSummary, /参考视频/);
+
+  state = confirmReplicationIntent(state);
+  assert.equal(activeOrder(state).phase, 'intent_review');
+
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  state = submitReplicationIntent(state);
+  order = activeOrder(state);
+  assert.deepEqual(order.intentDraft.blockingItems, []);
+
+  state = confirmReplicationIntent(state);
+  assert.equal(activeOrder(state).phase, 'analyzing');
+});
+
+test('analysis builds independent mapping groups and a product rule covers every product exposure', () => {
+  let state = completeAnalysis(createSameProductIntake());
+  state = applyReplacementGroupRule(state, 'product', {
+    target: { source: 'library', name: '便携式榨汁杯 Pro' },
+  });
+  const order = activeOrder(state);
+
+  assert.equal(order.referenceAnalysis.status, 'completed');
+  assert.equal(order.replacementPlan.person.sourceCount, 1);
+  assert.equal(order.replacementPlan.product.scope, 'all_exposures');
+  assert.equal(order.replacementPlan.product.exposureCount, 5);
+  assert.equal(order.replacementPlan.scene.sourceCount, 3);
+  assert.deepEqual(order.replacementPlan.clip, { strategy: 'keep', sourceCount: 12 });
+});
+
+test('reopening the first form keeps the reference analysis and invalidates the current replacement plan', () => {
+  let state = completeAnalysis(createSameProductIntake());
+  const previousAnalysis = structuredClone(activeOrder(state).referenceAnalysis);
+
+  state = reopenOrderConfiguration(state);
+  const order = activeOrder(state);
+
+  assert.equal(order.editingConfiguration, true);
+  assert.deepEqual(order.referenceAnalysis, previousAnalysis);
+  assert.equal(order.replacementPlan.status, 'invalidated');
+  assert.equal(order.replacementPlan.invalidatedReason, 'intent_reopened');
 });
