@@ -909,16 +909,19 @@ export function advanceReferenceAnalysis(state, { fail = false } = {}) {
   });
 }
 
-function productionSummaryLabels(order) {
+export function getProductionSummaryLabels(order) {
   const plan = order.replacementPlan || createReplacementPlan();
-  const mode = order.intentDraft.quickMode || order.draft.replicationMode;
+  const mode = order.intentDraft?.quickMode || order.draft?.replicationMode;
   const product = plan.product?.inheritReference
     ? (mode === 'same_product' ? '沿用原商品' : '沿用参考视频')
-    : plan.product?.target?.name || order.draft.product.name || '待选择目标商品';
+    : plan.product?.target?.name || order.draft?.product?.name || '待选择目标商品';
   const market = plan.localization?.inheritReference
     ? (mode === 'replace_product' ? '沿用原国家' : '沿用参考视频')
-    : plan.localization?.targetCountry || order.draft.market || '待选择国家';
-  return { product, market };
+    : plan.localization?.targetCountry || order.draft?.market || '待选择国家';
+  const language = plan.localization?.inheritReference
+    ? '沿用参考视频语言'
+    : plan.localization?.language || order.draft?.language || '待确认语言';
+  return { product, market, language };
 }
 
 export function confirmProductionPlan(state) {
@@ -942,7 +945,7 @@ export function confirmProductionPlan(state) {
     order.submittedDraft = clone(order.draft);
     order.submittedIntentDraft = clone(order.intentDraft);
     order.submittedReplacementPlan = clone(order.replacementPlan);
-    const { product: productLabel, market: marketLabel } = productionSummaryLabels(order);
+    const { product: productLabel, market: marketLabel } = getProductionSummaryLabels(order);
     order.subtitle = `${marketLabel} · ${productLabel}`;
     order.candidates = createCandidateSlots(order.id, order.draft.candidateCount);
     order.selectedCandidateId = null;
@@ -954,7 +957,7 @@ export function confirmProductionPlan(state) {
     appendMessage(order, {
       role: 'user',
       kind: 'summary',
-      text: `${wasEditing ? '更新' : '确认'}生产方案：${productLabel}，投放 ${marketLabel}，生成 ${order.draft.candidateCount} 条候选视频。`,
+      text: `${wasEditing ? '更新' : '确认'}生产方案：${productLabel}；市场：${marketLabel}；生成 ${order.draft.candidateCount} 条候选视频。`,
     });
     appendMessage(order, {
       role: 'assistant',
@@ -1038,10 +1041,11 @@ export function advanceOrder(state) {
       if (!order.candidates.length) order.candidates = createCandidateSlots(order.id, order.draft.candidateCount);
       order.selectedCandidateId = null;
       order.panes.detail = false;
+      const { product: productLabel, language: languageLabel } = getProductionSummaryLabels(order);
       appendMessage(order, {
         role: 'assistant',
         kind: 'progress',
-        text: `已建立 ${order.draft.candidateCount} 条生产变体，商品将在全部露出位置替换，本地化文案将使用${order.draft.language}。`,
+        text: `已建立 ${order.draft.candidateCount} 条生产变体。商品处理：${productLabel}；本地化文案、字幕与口播将按${languageLabel}处理。`,
         progress: 52,
       });
       return order;

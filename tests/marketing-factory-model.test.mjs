@@ -8,6 +8,7 @@ import {
   createDemoState,
   createOrder,
   getMarketingFactoryViewModel,
+  getProductionSummaryLabels,
   openReplicationTool,
   openOrder,
   resolveMissingMaterial,
@@ -625,6 +626,49 @@ test('replacement plans make reference inheritance explicit when shortcuts leave
   assert.equal(order.phase, 'running');
   assert.match(order.subtitle, /沿用参考视频/);
   assert.doesNotMatch(order.subtitle, /^\s*·|·\s*$/);
+});
+
+test('production summary labels keep inherited product market and language readable after confirmation', () => {
+  let replacementState = openReplicationTool(createDemoState(), 'welcome-card');
+  replacementState = updateOrderDraft(replacementState, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'replace_product',
+    product: { source: 'library', name: '新商品 Pro' },
+  });
+  replacementState = submitReplicationIntent(replacementState);
+  replacementState = confirmReplicationIntent(replacementState);
+  while (replacementState.orders[replacementState.activeOrderId].phase === 'analyzing') replacementState = advanceReferenceAnalysis(replacementState);
+  replacementState = confirmProductionPlan(replacementState);
+  let order = replacementState.orders[replacementState.activeOrderId];
+
+  assert.deepEqual(getProductionSummaryLabels(order), {
+    product: '新商品 Pro',
+    market: '沿用原国家',
+    language: '沿用参考视频语言',
+  });
+  replacementState = advanceOrder(advanceOrder(replacementState));
+  order = replacementState.orders[replacementState.activeOrderId];
+  assert.match(order.messages.at(-1).text, /沿用参考视频语言/);
+  assert.doesNotMatch(order.messages.at(-1).text, /使用。/);
+
+  let inheritedState = openReplicationTool(createDemoState(), 'welcome-card');
+  inheritedState = updateOrderDraft(inheritedState, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  inheritedState = submitReplicationIntent(inheritedState);
+  inheritedState = confirmReplicationIntent(inheritedState);
+  while (inheritedState.orders[inheritedState.activeOrderId].phase === 'analyzing') inheritedState = advanceReferenceAnalysis(inheritedState);
+  inheritedState = confirmProductionPlan(inheritedState);
+  order = inheritedState.orders[inheritedState.activeOrderId];
+
+  assert.deepEqual(getProductionSummaryLabels(order), {
+    product: '沿用参考视频',
+    market: '沿用参考视频',
+    language: '沿用参考视频语言',
+  });
+  assert.match(order.messages.filter((message) => message.kind === 'summary').at(-1)?.text || '', /沿用参考视频/);
+  inheritedState = advanceOrder(advanceOrder(inheritedState));
+  order = inheritedState.orders[inheritedState.activeOrderId];
+  assert.match(order.messages.at(-1).text, /商品处理：沿用参考视频/);
+  assert.doesNotMatch(order.messages.at(-1).text, /商品将在全部露出位置替换/);
 });
 
 test('replacement plan exposes deterministic object mappings and allows one object to differ from its group rule', () => {

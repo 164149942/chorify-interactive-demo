@@ -1,3 +1,5 @@
+import { getProductionSummaryLabels } from './marketing-factory-model.mjs';
+
 const STATUS_LABELS = {
   queued: '等待生成',
   generating: '生成中',
@@ -230,6 +232,7 @@ function renderConfiguration(order) {
   const objectTargetLabel = (object, fallbackTarget) => {
     const named = typeof object.target === 'string' ? object.target : object.target?.name;
     if (named) return named;
+    if (!object.strategy && ['person', 'scene', 'clip'].includes(object.group)) return `沿用分组规则：${fallbackTarget}`;
     if (object.group === 'product' && plan.product.inheritReference) return fallbackTarget;
     if (object.group === 'localization' && plan.localization.inheritReference) return fallbackTarget;
     if (object.strategy === 'keep') return '沿用参考视频';
@@ -240,10 +243,18 @@ function renderConfiguration(order) {
     const source = object.source || {};
     const shots = (source.shotIds || []).join('、');
     const range = source.range ? `${source.range.start}–${source.range.end}` : '';
+    const effectiveStrategy = object.strategy || plan[object.group]?.strategy || '';
     const controls = ['person', 'scene', 'clip'].includes(object.group)
-      ? `<span class="object-strategy-controls">${['keep', 'replace', 'ai'].map((strategy) => `<button type="button" class="${object.strategy === strategy ? 'is-active' : ''}" data-action="set-object-strategy" data-group="${escapeHtml(object.group)}" data-object-id="${escapeHtml(object.id)}" data-value="${strategy}">${strategy === 'keep' ? '保留' : strategy === 'replace' ? '替换' : 'AI 生成'}</button>`).join('')}</span>`
+      ? `<span class="object-strategy-controls">${['keep', 'replace', 'ai'].map((strategy) => `<button type="button" class="${effectiveStrategy === strategy ? 'is-active' : ''}" data-action="set-object-strategy" data-group="${escapeHtml(object.group)}" data-object-id="${escapeHtml(object.id)}" data-value="${strategy}">${strategy === 'keep' ? '保留' : strategy === 'replace' ? '替换' : 'AI 生成'}</button>`).join('')}</span>`
       : '';
-    return `<div class="mapping-object-row" data-mapping-object-id="${escapeHtml(object.id)}"><div class="mapping-row"><span class="mapping-source"><i class="mapping-thumb">${icon(object.group === 'product' ? 'image' : 'video', 13)}</i><span><small>原对象</small><strong>${escapeHtml(source.label || '未命名对象')}</strong><small>${escapeHtml([range, shots].filter(Boolean).join(' · '))}</small></span></span><b>→</b><span class="mapping-target"><small>目标对象</small><strong>${escapeHtml(objectTargetLabel(object, fallbackTarget))}</strong><small>${escapeHtml(object.strategy === 'keep' ? '保持原对象' : object.strategy === 'ai' ? '由 AI 生成匹配内容' : object.target?.source || '待补充目标素材')}</small></span></div>${controls}</div>`;
+    const targetHint = !object.strategy
+      ? '沿用分组规则'
+      : object.strategy === 'keep'
+        ? '保持原对象'
+        : object.strategy === 'ai'
+          ? '由 AI 生成匹配内容'
+          : object.target?.source || '待补充目标素材';
+    return `<div class="mapping-object-row" data-mapping-object-id="${escapeHtml(object.id)}"><div class="mapping-row"><span class="mapping-source"><i class="mapping-thumb">${icon(object.group === 'product' ? 'image' : 'video', 13)}</i><span><small>原对象</small><strong>${escapeHtml(source.label || '未命名对象')}</strong><small>${escapeHtml([range, shots].filter(Boolean).join(' · '))}</small></span></span><b>→</b><span class="mapping-target"><small>目标对象</small><strong>${escapeHtml(objectTargetLabel(object, fallbackTarget))}</strong><small>${escapeHtml(targetHint)}</small></span></div>${controls}</div>`;
   };
   return `
     <form id="production-plan-form" class="replication-card plan-card">
@@ -257,8 +268,8 @@ function renderConfiguration(order) {
 }
 
 function renderConfigSummary(order) {
-  const product = order.draft.replicationMode === 'same_product' ? '沿用原商品' : order.draft.product.name || '自定义调整';
-  return `<article class="config-summary"><div><span>${icon('check', 15)} 生产方案已确认</span><strong>${escapeHtml(order.draft.reference.name)} · ${escapeHtml(product)}</strong><p>${escapeHtml(order.draft.market)} · ${escapeHtml(order.draft.language)} · ${order.draft.candidateCount} 条候选</p></div><button data-action="reopen-configuration">重新打开配置</button></article>`;
+  const { product, market, language } = getProductionSummaryLabels(order);
+  return `<article class="config-summary"><div><span>${icon('check', 15)} 生产方案已确认</span><strong>${escapeHtml(order.draft.reference.name)} · ${escapeHtml(product)}</strong><p>${escapeHtml(market)} · ${escapeHtml(language)} · ${order.draft.candidateCount} 条候选</p></div><button data-action="reopen-configuration">重新打开配置</button></article>`;
 }
 
 function renderConfigurationMessage(order) {
@@ -312,8 +323,9 @@ function renderDetail(order) {
   const candidate = order.selectedCandidate;
   if (!candidate) return '';
   const ready = ['previewable', 'approved', 'revision', 'exported'].includes(candidate.status);
+  const { product: productLabel, market: marketLabel, language: languageLabel } = getProductionSummaryLabels(order);
   const waitingTitle = candidate.status === 'needs_material' ? '等待补充素材' : candidate.status === 'generating' ? '视频生成中' : '等待开始生成';
-  const media = ready ? `<div class="video-frame tone-${candidate.number}"><img src="./assets/portable-blender-product.png" alt="便携式榨汁杯"><button>▶</button><span>${escapeHtml(candidate.duration)}</span><em>9:16 · 1080P</em></div><section class="replication-score"><div><small>AI 复刻评估</small><strong>复刻度 ${candidate.score || '—'}</strong></div><span>${candidate.score || '—'}</span></section><section class="preview-section"><header><strong>替换核对</strong><em>${escapeHtml(candidate.version)}</em></header><ul><li>${icon('check', 14)} 商品全部露出位置已替换</li><li>${icon('check', 14)} ${escapeHtml(order.draft.market)}语言、字幕与口播已本地化</li><li>${icon('check', 14)} 原镜头顺序与整体节奏已锁定</li></ul></section><section class="preview-section"><header><strong>版本记录</strong><button data-action="placeholder">查看对比</button></header>${candidate.versionHistory.map((version) => `<div class="version-row"><b>${escapeHtml(version.version)}</b><span><strong>${escapeHtml(version.label)}</strong><small>${version.status === 'current' ? '当前版本' : '历史版本已保留'}</small></span></div>`).join('')}</section>` : `<div class="video-status-placeholder tone-${candidate.number}"><span class="status-orbit">◌</span><strong>${waitingTitle}</strong><p>${escapeHtml(candidate.direction)} · ${STATUS_LABELS[candidate.status]}</p><small>生成完成后将在这里自动显示视频预览、版本与审核操作。</small></div>`;
+  const media = ready ? `<div class="video-frame tone-${candidate.number}"><img src="./assets/portable-blender-product.png" alt="便携式榨汁杯"><button>▶</button><span>${escapeHtml(candidate.duration)}</span><em>9:16 · 1080P</em></div><section class="replication-score"><div><small>AI 复刻评估</small><strong>复刻度 ${candidate.score || '—'}</strong></div><span>${candidate.score || '—'}</span></section><section class="preview-section"><header><strong>替换核对</strong><em>${escapeHtml(candidate.version)}</em></header><ul><li>${icon('check', 14)} 商品处理：${escapeHtml(productLabel)}</li><li>${icon('check', 14)} 市场：${escapeHtml(marketLabel)}；语言、字幕与口播：${escapeHtml(languageLabel)}</li><li>${icon('check', 14)} 原镜头顺序与整体节奏已锁定</li></ul></section><section class="preview-section"><header><strong>版本记录</strong><button data-action="placeholder">查看对比</button></header>${candidate.versionHistory.map((version) => `<div class="version-row"><b>${escapeHtml(version.version)}</b><span><strong>${escapeHtml(version.label)}</strong><small>${version.status === 'current' ? '当前版本' : '历史版本已保留'}</small></span></div>`).join('')}</section>` : `<div class="video-status-placeholder tone-${candidate.number}"><span class="status-orbit">◌</span><strong>${waitingTitle}</strong><p>${escapeHtml(candidate.direction)} · ${STATUS_LABELS[candidate.status]}</p><small>生成完成后将在这里自动显示视频预览、版本与审核操作。</small></div>`;
   const actions = ready ? `<form id="preview-revision-form" class="preview-revision"><textarea id="preview-revision-input" placeholder="把这一条的修改要求发回 AI 对话…"></textarea><button type="submit">发送给 AI</button></form><footer class="preview-actions"><button data-action="request-revision">提出修改</button><button class="primary" data-action="approve-candidate" ${['approved', 'exported'].includes(candidate.status) ? 'disabled' : ''}>${['approved', 'exported'].includes(candidate.status) ? '已通过审核' : '通过审核'}</button><button data-action="export-candidate" ${candidate.status !== 'approved' ? 'disabled' : ''}>${candidate.status === 'exported' ? '已导出' : candidate.status === 'approved' ? '可以导出' : '等待审核后导出'}</button></footer>` : '';
   return `<aside class="preview-panel" aria-label="视频详情"><header><div><small>视频详情</small><strong>${escapeHtml(candidate.title)} · ${escapeHtml(candidate.version)}</strong></div><button data-action="toggle-panel" data-panel="detail">${icon('close')}</button></header><div class="preview-scroll">${media}</div>${actions}</aside>`;
 }

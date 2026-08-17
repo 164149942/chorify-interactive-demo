@@ -450,3 +450,45 @@ test('analysis failure returns an editable form with a retry action', () => {
   assert.match(html, /分析失败/);
   assert.match(html, /data-action="retry-reference-analysis"/);
 });
+
+test('confirmed summaries and preview details use inheritance-aware market language and product labels', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'replace_product',
+    product: { source: 'library', name: '新商品 Pro' },
+  });
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
+  state = confirmProductionPlan(state);
+  state = advanceOrder(advanceOrder(advanceOrder(state)));
+  state = selectCandidate(state, state.orders[state.activeOrderId].candidates[0].id);
+  const html = render(state);
+
+  assert.match(html, /生产方案已确认[\s\S]*新商品 Pro[\s\S]*沿用原国家[\s\S]*沿用参考视频语言/);
+  assert.match(html, /替换核对[\s\S]*沿用原国家[\s\S]*沿用参考视频语言/);
+  assert.doesNotMatch(html, /<p>\s*·\s*·\s*3 条候选/);
+  assert.doesNotMatch(html, />语言、字幕与口播已本地化/);
+
+  let inheritedState = openReplicationTool(createDemoState(), 'welcome-card');
+  inheritedState = updateOrderDraft(inheritedState, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  inheritedState = submitReplicationIntent(inheritedState);
+  inheritedState = confirmReplicationIntent(inheritedState);
+  inheritedState = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(inheritedState)));
+  inheritedState = confirmProductionPlan(inheritedState);
+  inheritedState = advanceOrder(advanceOrder(advanceOrder(inheritedState)));
+  inheritedState = selectCandidate(inheritedState, inheritedState.orders[inheritedState.activeOrderId].candidates[0].id);
+  const inheritedHtml = render(inheritedState);
+
+  assert.match(inheritedHtml, /生产方案已确认[\s\S]*沿用参考视频[\s\S]*沿用参考视频语言/);
+  assert.match(inheritedHtml, /替换核对[\s\S]*商品处理：沿用参考视频[\s\S]*市场：沿用参考视频/);
+});
+
+test('object rows without an override inherit their group rule instead of requesting missing material', () => {
+  const html = render(createPlanState());
+  const sceneRow = html.match(/data-mapping-object-id="scene-kitchen"[\s\S]*?<\/div><\/div>/)?.[0] || '';
+
+  assert.match(sceneRow, /沿用分组规则/);
+  assert.doesNotMatch(sceneRow, /待补充目标素材/);
+});
