@@ -170,6 +170,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (action === 'resolve-intent-strategy-conflict') {
+    state = updateIntentStrategy(state, target.dataset.group, target.dataset.value);
+    render();
+    return;
+  }
   if (action === 'set-intent-strategy') {
     state = updateIntentStrategy(state, target.dataset.group, target.dataset.value);
     render();
@@ -187,6 +192,12 @@ function handleClick(event) {
     if (activeOrder()?.phase === 'analyzing') scheduleNextProgress(700);
     return;
   }
+  if (action === 'retry-reference-analysis') {
+    state = startReferenceAnalysis(state, { allowEmptyQuickMode: true });
+    render({ scrollConversation: true });
+    if (activeOrder()?.phase === 'analyzing') scheduleNextProgress(700);
+    return;
+  }
   if (action === 'pick-replacement-target') {
     const source = target.dataset.source || 'library';
     const product = { source, name: source === 'upload' ? '新商品资料包.zip' : '便携式榨汁杯 Pro' };
@@ -196,6 +207,14 @@ function handleClick(event) {
   }
   if (action === 'set-replacement-strategy') {
     state = applyReplacementGroupRule(state, target.dataset.group, { strategy: target.dataset.value });
+    render();
+    return;
+  }
+  if (action === 'set-object-strategy') {
+    state = updateReplacementMapping(state, target.dataset.group, {
+      objectId: target.dataset.objectId,
+      objectPatch: { strategy: target.dataset.value },
+    });
     render();
     return;
   }

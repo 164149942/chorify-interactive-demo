@@ -13,8 +13,10 @@ import {
   openReplicationTool,
   submitReplicationIntent,
   confirmReplicationIntent,
+  confirmProductionPlan,
   updateOrderDraft,
   updateIntentStrategy,
+  updateIntentFromNaturalLanguage,
   updateReplacementMapping,
   updatePlanFromNaturalLanguage,
   reopenOrderConfiguration,
@@ -383,4 +385,68 @@ test('the second inline form renders five mapping groups, applies natural-langua
   assert.match(html, /确认替换方案并开始复刻/);
   assert.match(html, /<button[^>]*disabled[^>]*>确认替换方案并开始复刻/);
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
+});
+
+test('form two labels untouched market and product mappings as inherited reference values', () => {
+  let replacementState = openReplicationTool(createDemoState(), 'welcome-card');
+  replacementState = updateOrderDraft(replacementState, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'replace_product',
+  });
+  replacementState = submitReplicationIntent(replacementState);
+  replacementState = confirmReplicationIntent(replacementState);
+  replacementState = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(replacementState)));
+  let html = render(replacementState);
+
+  assert.match(html, /本地化[\s\S]*沿用原国家/);
+  assert.doesNotMatch(html, /本地化[\s\S]*待选择国家/);
+
+  let untouchedState = openReplicationTool(createDemoState(), 'welcome-card');
+  untouchedState = updateOrderDraft(untouchedState, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  untouchedState = submitReplicationIntent(untouchedState);
+  untouchedState = confirmReplicationIntent(untouchedState);
+  untouchedState = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(untouchedState)));
+  html = render(untouchedState);
+
+  assert.match(html, /商品[\s\S]*沿用参考视频/);
+  assert.match(html, /本地化[\s\S]*沿用参考视频/);
+});
+
+test('form two renders compact rows for every deterministic object and exposes row-level controls', () => {
+  const html = render(createPlanState());
+
+  assert.equal((html.match(/data-mapping-object-id="scene-/g) || []).length, 3);
+  assert.ok((html.match(/data-mapping-object-id="clip-/g) || []).length >= 3);
+  assert.match(html, /data-mapping-object-id="person-01"[\s\S]*shot-01[\s\S]*shot-03/);
+  assert.match(html, /data-mapping-object-id="clip-01"[\s\S]*00:00/);
+  assert.match(html, /data-action="set-object-strategy" data-group="scene" data-object-id="scene-kitchen" data-value="ai"/);
+});
+
+test('a structured strategy conflict is visible in form one instead of being silently replaced by natural language', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, { reference: { source: 'upload', name: '参考爆款视频.mp4' } });
+  state = updateIntentStrategy(state, 'person', 'keep');
+  state = updateIntentFromNaturalLanguage(state, '人物用 AI');
+  state = submitReplicationIntent(state);
+  const html = render(state);
+
+  assert.match(html, /人物.*保留.*AI 判断/);
+  assert.match(html, /person_strategy_conflict/);
+  assert.match(html, /当前有冲突需要处理/);
+});
+
+test('analysis failure returns an editable form with a retry action', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    market: '墨西哥',
+  });
+  state = startReferenceAnalysis(state);
+  state = advanceReferenceAnalysis(state, { fail: true });
+  const html = render(state);
+
+  assert.match(html, /id="reference-intake-form"/);
+  assert.match(html, /分析失败/);
+  assert.match(html, /data-action="retry-reference-analysis"/);
 });
