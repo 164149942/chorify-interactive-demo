@@ -100,7 +100,7 @@ test('the chat renders a compact intake first and a data-driven second form afte
   assert.match(planHtml, /id="production-plan-form"/);
   assert.match(planHtml, /商品露出/);
   assert.match(planHtml, /检测到人物/);
-  assert.match(planHtml, /确认替换清单/);
+  assert.match(planHtml, /确认复刻对象与目标/);
   assert.match(planHtml, /原对象/);
 });
 

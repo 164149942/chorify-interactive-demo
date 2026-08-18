@@ -11,6 +11,8 @@ import {
   exportCandidate,
   getMarketingFactoryViewModel,
   openReplicationTool,
+  openReplacementTargetPicker,
+  sendConversationMessage,
   submitReplicationIntent,
   confirmReplicationIntent,
   confirmProductionPlan,
@@ -37,6 +39,68 @@ function createPlanState() {
   state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
   return state;
 }
+
+test('embedded forms leave the persistent composer as the only free-text entry', () => {
+  const intakeHtml = render(openReplicationTool(createDemoState(), 'welcome-card'));
+  const planHtml = render(createPlanState());
+
+  assert.doesNotMatch(intakeHtml, /data-field="intentNaturalLanguage"/);
+  assert.doesNotMatch(intakeHtml, /data-action="recognize-intent"/);
+  assert.doesNotMatch(planHtml, /class="plan-language"/);
+  assert.doesNotMatch(planHtml, /data-action="apply-plan-language"/);
+  assert.equal((planHtml.match(/id="conversation-input"/g) || []).length, 1);
+});
+
+test('form two is an attention-first source-to-target review with settled work disclosed', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'replace_product',
+  });
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
+  const html = render(state);
+
+  assert.match(html, /确认复刻对象与目标/);
+  assert.match(html, /data-review-count="missing"/);
+  assert.match(html, /data-review-count="conflict"/);
+  assert.match(html, /data-review-count="resolved"/);
+  assert.match(html, /data-review-section="attention"/);
+  assert.match(html, /原对象[\s\S]*复刻目标/);
+  assert.match(html, /AI 已处理 \d+ 项/);
+  assert.match(html, /data-review-section="ai-handled"/);
+  assert.match(html, /镜头 01/);
+  assert.doesNotMatch(html, />shot-01</);
+  assert.match(html, /确认替换方案并开始复刻/);
+  assert.match(html, /<button[^>]*disabled[^>]*>确认替换方案并开始复刻/);
+});
+
+test('a complex object target opens a fixed overlay picker without opening candidate panes', () => {
+  let state = createPlanState();
+  state = openReplacementTargetPicker(state, 'person', 'person-01');
+  const html = render(state);
+  const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+
+  assert.match(html, /class="replacement-target-drawer"/);
+  assert.match(html, /aria-label="选择目标人物"/);
+  assert.match(html, /data-action="close-replacement-target-picker"/);
+  assert.match(html, /data-action="choose-replacement-target" data-option-id="person-ai"/);
+  assert.doesNotMatch(html, /aria-label="候选视频任务"/);
+  assert.doesNotMatch(html, /aria-label="视频详情"/);
+  assert.match(css, /\.replacement-target-drawer\s*\{[^}]*position:\s*fixed/s);
+});
+
+test('composer changes highlight affected comparison rows and expose a working undo action', () => {
+  const state = sendConversationMessage(createPlanState(), '人物用 AI');
+  const html = render(state);
+
+  assert.match(html, /已把这条要求同步到复刻配置/);
+  assert.match(html, /data-action="undo-plan-change"/);
+  assert.match(html, /class="mapping-comparison-row[^"]*is-affected[^"]*" data-mapping-object-id="person-01"/);
+  assert.match(html, /本次修改/);
+  assert.doesNotMatch(html, /aria-label="候选视频任务"/);
+});
 
 test('new chat keeps the existing Chorify navigation and exposes video replication as a tool', () => {
   const html = render(createDemoState());
@@ -106,9 +170,8 @@ test('AI-detected replacement controls stay inside the second chat form', () => 
   const html = render(createPlanState());
 
   assert.match(html, /data-replacement-group="person"/);
-  assert.match(html, /人物库/);
-  assert.match(html, /AI/);
-  assert.match(html, /目标来源/);
+  assert.match(html, /data-action="set-object-strategy" data-group="person" data-object-id="person-01" data-value="ai">AI 生成/);
+  assert.match(html, /原对象[\s\S]*复刻目标/);
   assert.match(html, /参考视频分析完成/);
   assert.doesNotMatch(html, /场景替换说明/);
 });
@@ -221,7 +284,9 @@ test('the first inline form captures a replication intent with tri-state choices
   assert.match(html, /data-action="set-intent-strategy" data-group="person" data-value="keep"/);
   assert.match(html, /data-action="set-intent-strategy" data-group="person" data-value="replace"/);
   assert.match(html, /data-action="set-intent-strategy" data-group="person" data-value="ai"/);
-  assert.match(html, /识别我的要求/);
+  assert.doesNotMatch(html, /intentNaturalLanguage/);
+  assert.doesNotMatch(html, /识别我的要求/);
+  assert.match(html, /class="chat-composer conversation-composer chat-primary-composer"/);
   assert.match(html, /AI 理解/);
   assert.match(html, /分析视频并生成替换清单/);
   assert.match(html, /data-action="confirm-replication-intent"/);
@@ -251,7 +316,7 @@ test('collapsed intent summary shortens the AI decision without changing the sec
   const summary = html.match(/<article class="intent-summary">[\s\S]*?<\/article>/)?.[0] || '';
 
   assert.match(summary, /人物AI 判断/);
-  assert.match(html, /data-action="set-replacement-strategy" data-group="person" data-value="ai">AI 生成/);
+  assert.match(html, /data-action="set-object-strategy" data-group="person" data-object-id="person-01" data-value="ai">AI 生成/);
 });
 
 test('first-form shortcuts expose no-change, country-only, product-only, and country-plus-product fields', () => {
@@ -304,8 +369,7 @@ test('blocker actions match the missing replacement input instead of offering an
   productState = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(productState)));
   const productHtml = render(productState);
 
-  assert.match(productHtml, /data-action="pick-replacement-target" data-group="product" data-source="library"/);
-  assert.match(productHtml, /data-action="pick-replacement-target" data-group="product" data-source="upload"/);
+  assert.match(productHtml, /data-action="open-replacement-target-picker" data-group="product" data-object-id="product-main"/);
   assert.doesNotMatch(productHtml, /data-action="resolve-plan-limit" data-blocker="product"/);
 
   let marketState = openReplicationTool(createDemoState(), 'welcome-card');
@@ -315,7 +379,7 @@ test('blocker actions match the missing replacement input instead of offering an
   marketState = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(marketState)));
   const marketHtml = render(marketState);
 
-  assert.match(marketHtml, /data-action="select-market-blocker"/);
+  assert.match(marketHtml, /data-plan-field="targetCountry"/);
   assert.doesNotMatch(marketHtml, /data-action="resolve-plan-limit" data-blocker="product"/);
 });
 
@@ -339,7 +403,7 @@ test('analysis is conversational and appends a replacement-plan confirmation car
 
   assert.match(html, /class="chat-message is-ai"/);
   assert.match(html, /class="intent-summary"/);
-  assert.match(html, /确认替换清单/);
+  assert.match(html, /确认复刻对象与目标/);
   assert.match(html, /id="production-plan-form"/);
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
 });
@@ -358,7 +422,7 @@ test('conversation orders intent, one analysis progress message, completion, and
   const intentIndex = html.indexOf('已确认复刻意图');
   const progressIndex = html.indexOf('正在读取镜头结构');
   const completionIndex = html.indexOf('分析完成：共');
-  const planIndex = html.indexOf('确认替换清单');
+  const planIndex = html.indexOf('确认复刻对象与目标');
 
   assert.ok(intentIndex < progressIndex && progressIndex < completionIndex && completionIndex < planIndex);
   assert.equal((html.match(/正在读取镜头结构/g) || []).length, 1);
@@ -378,9 +442,9 @@ test('the second inline form renders five mapping groups, applies natural-langua
   assert.match(html, /data-replacement-group="person"/);
   assert.match(html, /data-replacement-group="scene"/);
   assert.match(html, /data-replacement-group="clip"/);
-  assert.match(html, /原对象[\s\S]*→[\s\S]*目标对象/);
-  assert.match(html, /data-action="set-replacement-strategy" data-group="person" data-value="ai"/);
-  assert.match(html, /受影响/);
+  assert.match(html, /原对象[\s\S]*→[\s\S]*复刻目标/);
+  assert.match(html, /data-action="set-object-strategy" data-group="person" data-object-id="person-01" data-value="ai"/);
+  assert.match(html, /class="mapping-comparison-row[^"]*is-affected[^"]*" data-mapping-object-id="person-01"/);
   assert.match(html, /1 条[\s\S]*3 条[\s\S]*5 条/);
   assert.match(html, /确认替换方案并开始复刻/);
   assert.match(html, /<button[^>]*disabled[^>]*>确认替换方案并开始复刻/);
@@ -417,7 +481,7 @@ test('form two renders compact rows for every deterministic object and exposes r
 
   assert.equal((html.match(/data-mapping-object-id="scene-/g) || []).length, 3);
   assert.ok((html.match(/data-mapping-object-id="clip-/g) || []).length >= 3);
-  assert.match(html, /data-mapping-object-id="person-01"[\s\S]*shot-01[\s\S]*shot-03/);
+  assert.match(html, /data-mapping-object-id="person-01"[\s\S]*镜头 01[\s\S]*镜头 03/);
   assert.match(html, /data-mapping-object-id="clip-01"[\s\S]*00:00/);
   assert.match(html, /data-action="set-object-strategy" data-group="scene" data-object-id="scene-kitchen" data-value="ai"/);
 });
@@ -487,9 +551,11 @@ test('confirmed summaries and preview details use inheritance-aware market langu
 
 test('object rows without an override inherit their group rule instead of requesting missing material', () => {
   const html = render(createPlanState());
-  const sceneRow = html.match(/data-mapping-object-id="scene-kitchen"[\s\S]*?<\/div><\/div>/)?.[0] || '';
+  const rowStart = html.indexOf('data-mapping-object-id="scene-kitchen"');
+  const rowEnd = html.indexOf('data-mapping-object-id="scene-bedroom"', rowStart);
+  const sceneRow = html.slice(rowStart, rowEnd);
 
-  assert.match(sceneRow, /沿用分组规则/);
+  assert.match(sceneRow, /沿用当前分组规则/);
   assert.doesNotMatch(sceneRow, /待补充目标素材/);
 });
 

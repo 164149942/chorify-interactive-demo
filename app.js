@@ -25,13 +25,15 @@ import {
   toggleChangeGoal,
   togglePanel,
   updateOrderDraft,
-  updateIntentFromNaturalLanguage,
   updateIntentStrategy,
   clearIntentTargetProduct,
-  updatePlanFromNaturalLanguage,
   updateReplacementMapping,
   applyReplacementGroupRule,
   resolveReplacementPlanBlocker,
+  openReplacementTargetPicker,
+  closeReplacementTargetPicker,
+  chooseReplacementTarget,
+  undoLastPlanChange,
 } from './marketing-factory-model.mjs';
 import { renderMarketingFactory } from './marketing-factory-view.mjs';
 
@@ -180,12 +182,6 @@ function handleClick(event) {
     render();
     return;
   }
-  if (action === 'recognize-intent') {
-    const value = document.querySelector('[data-field="intentNaturalLanguage"]')?.value || '';
-    state = updateIntentFromNaturalLanguage(state, value);
-    render();
-    return;
-  }
   if (action === 'confirm-replication-intent') {
     state = confirmReplicationIntent(state);
     render({ scrollConversation: true });
@@ -198,10 +194,23 @@ function handleClick(event) {
     if (activeOrder()?.phase === 'analyzing') scheduleNextProgress(700);
     return;
   }
-  if (action === 'pick-replacement-target') {
-    const source = target.dataset.source || 'library';
-    const product = { source, name: source === 'upload' ? '新商品资料包.zip' : '便携式榨汁杯 Pro' };
-    state = updateReplacementMapping(state, target.dataset.group, { target: product, scope: 'all_exposures' });
+  if (action === 'open-replacement-target-picker') {
+    state = openReplacementTargetPicker(state, target.dataset.group, target.dataset.objectId);
+    render();
+    return;
+  }
+  if (action === 'close-replacement-target-picker') {
+    state = closeReplacementTargetPicker(state);
+    render();
+    return;
+  }
+  if (action === 'choose-replacement-target') {
+    state = chooseReplacementTarget(state, target.dataset.optionId);
+    render();
+    return;
+  }
+  if (action === 'undo-plan-change') {
+    state = undoLastPlanChange(state, target.dataset.undoToken);
     render();
     return;
   }
@@ -235,12 +244,6 @@ function handleClick(event) {
   }
   if (action === 'resolve-plan-limit') {
     state = resolveReplacementPlanBlocker(state, target.dataset.blocker, target.dataset.value);
-    render();
-    return;
-  }
-  if (action === 'apply-plan-language') {
-    const value = document.querySelector('[data-field="planNaturalLanguage"]')?.value || '';
-    state = updatePlanFromNaturalLanguage(state, value);
     render();
     return;
   }
