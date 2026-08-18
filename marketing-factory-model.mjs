@@ -298,7 +298,14 @@ function recomputeReplacementPlanBlockers(order) {
   if (!plan.localization?.inheritReference && !plan.localization?.targetCountry) blockers.push('market');
   blockers.push(...getIntentConflicts(order.intentDraft));
   for (const group of ['person', 'scene', 'clip']) {
-    if (plan[group]?.strategy === 'replace' && !plan[group]?.target) blockers.push(`${group}_material`);
+    const groupObjects = (plan.objects || []).filter((object) => object.group === group);
+    const objectsResolveGroup = groupObjects.length > 0 && groupObjects.every((object) => (
+      ['keep', 'ai', 'replace'].includes(object.strategy)
+      && (object.strategy !== 'replace' || objectTargetName(object.target))
+    ));
+    if (plan[group]?.strategy === 'replace' && !objectTargetName(plan[group]?.target) && !objectsResolveGroup) {
+      blockers.push(`${group}_material`);
+    }
   }
   for (const object of plan.objects || []) {
     if (['person', 'scene', 'clip'].includes(object.group) && object.strategy === 'replace' && !objectTargetName(object.target)) {

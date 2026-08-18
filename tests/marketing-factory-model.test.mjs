@@ -563,6 +563,31 @@ test('target picker opens without results panes and applies one deterministic ob
   assert.equal(state.orders[state.activeOrderId].replacementPlan.review.picker, null);
 });
 
+test('resolving every required object through the picker clears legacy group blockers and allows production', () => {
+  let state = createPlanOrder();
+  state = applyReplacementGroupRule(state, 'scene', { strategy: 'replace' });
+  assert.deepEqual(state.orders[state.activeOrderId].replacementPlan.blockingItems, ['scene_material']);
+
+  for (const objectId of ['scene-kitchen', 'scene-table']) {
+    state = openReplacementTargetPicker(state, 'scene', objectId);
+    state = chooseReplacementTarget(state, 'scene-library');
+    assert.deepEqual(state.orders[state.activeOrderId].replacementPlan.blockingItems, ['scene_material']);
+  }
+
+  state = openReplacementTargetPicker(state, 'scene', 'scene-commute');
+  state = chooseReplacementTarget(state, 'scene-library');
+  let order = state.orders[state.activeOrderId];
+  const review = getReplacementPlanReviewViewModel(order);
+
+  assert.deepEqual(order.replacementPlan.blockingItems, []);
+  assert.deepEqual(review.counts, { missing: 0, conflict: 0, resolved: 10 });
+
+  state = confirmProductionPlan(state);
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.phase, 'running');
+  assert.equal(order.candidates.length, 3);
+});
+
 test('composer plan changes keep one reversible snapshot and report affected rows', () => {
   let state = createPlanOrder();
   const before = structuredClone(state.orders[state.activeOrderId]);
