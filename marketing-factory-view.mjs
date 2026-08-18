@@ -121,10 +121,10 @@ function renderHomeComposer() {
     </form>`;
 }
 
-function renderMessage(message) {
+function renderMessage(message, activeUndoToken = '') {
   const user = message.role === 'user';
   const planChange = message.kind === 'plan-change'
-    ? `<div class="plan-change-summary"><span><strong>本次修改</strong><small>${escapeHtml((message.affectedGroups || []).map((group) => ({ product: '商品', localization: '本地化', person: '人物', scene: '场景', clip: '视频片段' }[group] || group)).join('、'))}</small></span><button type="button" data-action="undo-plan-change" data-undo-token="${escapeHtml(message.planChangeToken)}">撤销本次修改</button></div>`
+    ? `<div class="plan-change-summary"><span><strong>本次修改</strong><small>${escapeHtml((message.affectedGroups || []).map((group) => ({ product: '商品', localization: '本地化', person: '人物', scene: '场景', clip: '视频片段' }[group] || group)).join('、'))}</small></span>${message.planChangeToken === activeUndoToken ? `<button type="button" data-action="undo-plan-change" data-undo-token="${escapeHtml(message.planChangeToken)}">撤销本次修改</button>` : '<em>历史修改</em>'}</div>`
     : '';
   return `<article class="chat-message ${user ? 'is-user' : 'is-ai'}"><div class="message-avatar">${user ? 'DW' : 'AI'}</div><div class="message-bubble"><p>${escapeHtml(message.text)}</p>${planChange}${message.progress != null ? `<div class="inline-progress"><span style="width:${Number(message.progress)}%"></span></div><small>${Number(message.progress)}%</small>` : ''}</div></article>`;
 }
@@ -248,7 +248,7 @@ function renderConfiguration(order) {
   const objectTargetHint = (object) => {
     if (object.attention === 'conflict') return '当前规则存在冲突，需要你决定';
     if (object.attention === 'missing') return '已选择替换，等待补充目标素材';
-    if (object.attention === 'changed') return '已按你刚才的对话要求更新';
+    if (object.changed) return '已按你刚才的对话要求更新';
     if (!object.strategy) return '沿用当前分组规则';
     if (object.strategy === 'keep') return '保持原对象与镜头节奏';
     if (object.strategy === 'ai') return '由 AI 补齐匹配内容';
@@ -257,7 +257,7 @@ function renderConfiguration(order) {
   const statusPill = (object) => {
     if (object.attention === 'missing') return '<span class="review-status is-missing">待补充</span>';
     if (object.attention === 'conflict') return '<span class="review-status is-conflict">需决定</span>';
-    if (object.attention === 'changed') return '<span class="review-status is-changed">已更新</span>';
+    if (object.changed) return '<span class="review-status is-changed">已更新</span>';
     return '<span class="review-status is-resolved">AI 已处理</span>';
   };
   const targetActionLabel = { product: '选择目标商品', person: '选择目标人物', scene: '选择目标场景', clip: '选择替代片段' };
@@ -266,7 +266,7 @@ function renderConfiguration(order) {
       return `<label class="localization-control"><span>投放国家</span><select data-plan-field="targetCountry"><option value="">请选择</option>${['墨西哥', '美国', '巴西', '泰国'].map((market) => `<option value="${market}" ${plan.localization.targetCountry === market ? 'selected' : ''}>${market}</option>`).join('')}</select></label>`;
     }
     if (object.group === 'product') {
-      return `<button type="button" class="target-picker-trigger" data-action="open-replacement-target-picker" data-group="product" data-object-id="${escapeHtml(object.id)}">${plan.product.target?.name ? '更换目标商品' : '选择目标商品'} ›</button>`;
+      return `${object.attention === 'conflict' ? '<button type="button" class="conflict-resolver" data-action="clear-intent-target-product">沿用原商品</button>' : ''}<button type="button" class="target-picker-trigger" data-action="open-replacement-target-picker" data-group="product" data-object-id="${escapeHtml(object.id)}">${plan.product.target?.name ? '更换目标商品' : '选择目标商品'} ›</button>`;
     }
     const strategy = object.strategy || plan[object.group]?.strategy || 'keep';
     return `<div class="object-strategy-controls">${['keep', 'replace', 'ai'].map((value) => `<button type="button" class="${strategy === value ? 'is-active' : ''}" data-action="set-object-strategy" data-group="${escapeHtml(object.group)}" data-object-id="${escapeHtml(object.id)}" data-value="${value}">${value === 'keep' ? '保持' : value === 'replace' ? '替换' : 'AI 生成'}</button>`).join('')}${strategy === 'replace' ? `<button type="button" class="target-picker-trigger" data-action="open-replacement-target-picker" data-group="${escapeHtml(object.group)}" data-object-id="${escapeHtml(object.id)}">${targetActionLabel[object.group]} ›</button>` : ''}</div>`;
@@ -276,7 +276,7 @@ function renderConfiguration(order) {
     const shotIds = source.shotIds || [];
     const previewChips = shotIds.slice(0, 3).map((shotId) => `<span class="shot-chip">${escapeHtml(shotChip(shotId))}</span>`).join('');
     const involvement = source.range ? `${source.range.start}–${source.range.end}` : `${shotIds.length} 个镜头`;
-    const affected = object.attention === 'changed' || (plan.affectedObjectIds || []).includes(object.id);
+    const affected = object.changed || (plan.affectedObjectIds || []).includes(object.id);
     return `<article class="mapping-comparison-row ${affected ? 'is-affected' : ''} ${object.attention ? `needs-${object.attention}` : ''}" data-mapping-object-id="${escapeHtml(object.id)}"><div class="comparison-main"><div class="source-object"><i class="mapping-thumb">${icon(object.group === 'product' ? 'image' : 'video', 14)}</i><span><small>原对象</small><strong>${escapeHtml(source.label || '未命名对象')}</strong><small>${escapeHtml(involvement)}</small></span></div><b class="mapping-arrow">→</b><div class="target-object ${object.attention === 'missing' ? 'is-missing' : ''} ${object.attention === 'conflict' ? 'is-conflict' : ''}"><small>复刻目标</small><strong>${escapeHtml(objectTarget(object))}</strong><small>${escapeHtml(objectTargetHint(object))}</small></div>${statusPill(object)}</div><div class="comparison-actions">${renderControls(object)}</div><details class="mapping-involvement"><summary><span>涉及镜头</span>${previewChips}${shotIds.length > 3 ? `<em>共 ${shotIds.length} 处</em>` : ''}<b>展开依据 ›</b></summary><div><p>${source.range ? `时间范围：${escapeHtml(source.range.start)}–${escapeHtml(source.range.end)}` : `完整位置：${shotIds.map((shotId) => escapeHtml(shotChip(shotId))).join('、')}`}</p><p>处理依据：${escapeHtml(groupMeta[object.group].sourceNote)}</p><small>目标来源：${escapeHtml(object.target?.source || (object.strategy === 'ai' ? 'AI 生成' : object.strategy === 'keep' ? '参考视频' : '当前分组规则'))}</small></div></details></article>`;
   };
   const renderReviewGroup = (group, objects, compact = false) => {
@@ -317,16 +317,17 @@ function renderPending(order) {
 }
 
 function renderConversation(order) {
+  const activeUndoToken = order.replacementPlan?.review?.lastChange?.undoToken || '';
   return `
     <main class="conversation-column chat-canvas" aria-label="AI 聊天会话">
       <div class="conversation-agent"><span class="ai-avatar">AI</span><div><strong>Chorify 创作智能体</strong><small><i></i> 已连接当前会话</small></div><button data-action="placeholder">•••</button></div>
       <div class="conversation-scroll" data-scroll-region="conversation">
         <div class="conversation-lane">
           <div class="context-bar"><span>当前任务</span><strong>${escapeHtml(order.title)}</strong><em>${escapeHtml(order.status)}</em></div>
-          ${order.messages.slice(0, 1).map(renderMessage).join('')}
+          ${order.messages.slice(0, 1).map((message) => renderMessage(message, activeUndoToken)).join('')}
           ${['intake', 'intent_review'].includes(order.phase) ? `<article class="chat-tool-message"><div class="message-avatar">AI</div><div class="tool-message-body">${renderReferenceIntake(order)}</div></article>` : ''}
           ${['analyzing', 'plan'].includes(order.phase) && !order.editingConfiguration ? renderIntentSummary(order) : ''}
-          ${order.messages.slice(1).map(renderMessage).join('')}
+          ${order.messages.slice(1).map((message) => renderMessage(message, activeUndoToken)).join('')}
           ${order.phase === 'plan' || order.editingConfiguration ? renderConfigurationMessage(order) : ''}
           ${['running', 'review'].includes(order.phase) && !order.editingConfiguration ? renderConfigSummary(order) : ''}
           ${renderPending(order)}

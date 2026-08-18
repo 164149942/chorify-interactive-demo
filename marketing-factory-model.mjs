@@ -1040,8 +1040,7 @@ export function getReplacementPlanReviewViewModel(order) {
     let attention = '';
     if (conflictForGroup(object.group)) attention = 'conflict';
     else if (missingForObject(object)) attention = 'missing';
-    else if (affected.has(object.id)) attention = 'changed';
-    return { ...clone(object), attention };
+    return { ...clone(object), attention, changed: affected.has(object.id) };
   });
   const needsAttention = classified.filter((object) => object.attention);
   const aiHandled = classified.filter((object) => !object.attention);

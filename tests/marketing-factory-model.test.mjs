@@ -537,6 +537,21 @@ test('replacement review classifies missing conflict and settled objects for att
   assert.equal(review.aiHandled.length, 8);
 });
 
+test('composer-changed rows stay resolved unless they also have a real blocker', () => {
+  let state = createPlanOrder();
+  state = updatePlanFromNaturalLanguage(state, '人物用 AI');
+
+  const review = getReplacementPlanReviewViewModel(state.orders[state.activeOrderId]);
+  const changedPerson = review.aiHandled.find((item) => item.id === 'person-01');
+
+  assert.equal(review.needsAttention.length, 0);
+  assert.equal(review.counts.missing, 0);
+  assert.equal(review.counts.conflict, 0);
+  assert.equal(review.counts.resolved, 10);
+  assert.equal(changedPerson?.attention, '');
+  assert.equal(changedPerson?.changed, true);
+});
+
 test('target picker opens without results panes and applies one deterministic object target', () => {
   let state = createPlanOrder();
   const panesBefore = structuredClone(state.orders[state.activeOrderId].panes);

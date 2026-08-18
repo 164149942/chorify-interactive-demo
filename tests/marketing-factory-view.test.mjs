@@ -12,7 +12,10 @@ import {
   getMarketingFactoryViewModel,
   openReplicationTool,
   openReplacementTargetPicker,
+  chooseReplacementTarget,
+  clearIntentTargetProduct,
   sendConversationMessage,
+  undoLastPlanChange,
   submitReplicationIntent,
   confirmReplicationIntent,
   confirmProductionPlan,
@@ -100,6 +103,22 @@ test('composer changes highlight affected comparison rows and expose a working u
   assert.match(html, /class="mapping-comparison-row[^"]*is-affected[^"]*" data-mapping-object-id="person-01"/);
   assert.match(html, /本次修改/);
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
+});
+
+test('only the newest valid plan change message exposes undo and undoing removes it', () => {
+  let state = sendConversationMessage(createPlanState(), '人物用 AI');
+  const firstToken = state.orders[state.activeOrderId].replacementPlan.review.lastChange.undoToken;
+  state = sendConversationMessage(state, '场景用 AI');
+  const secondToken = state.orders[state.activeOrderId].replacementPlan.review.lastChange.undoToken;
+
+  let html = render(state);
+  assert.equal((html.match(/data-action="undo-plan-change"/g) || []).length, 1);
+  assert.doesNotMatch(html, new RegExp(`data-undo-token="${firstToken}"`));
+  assert.match(html, new RegExp(`data-undo-token="${secondToken}"`));
+
+  state = undoLastPlanChange(state, secondToken);
+  html = render(state);
+  assert.equal((html.match(/data-action="undo-plan-change"/g) || []).length, 0);
 });
 
 test('new chat keeps the existing Chorify navigation and exposes video replication as a tool', () => {
@@ -381,6 +400,34 @@ test('blocker actions match the missing replacement input instead of offering an
 
   assert.match(marketHtml, /data-plan-field="targetCountry"/);
   assert.doesNotMatch(marketHtml, /data-action="resolve-plan-limit" data-blocker="product"/);
+});
+
+test('a same-product target conflict exposes a real path back to the original product', () => {
+  let state = openReplicationTool(createDemoState(), 'welcome-card');
+  state = updateOrderDraft(state, {
+    reference: { source: 'upload', name: '参考爆款视频.mp4' },
+    replicationMode: 'same_product',
+    market: '墨西哥',
+  });
+  state = submitReplicationIntent(state);
+  state = confirmReplicationIntent(state);
+  state = advanceReferenceAnalysis(advanceReferenceAnalysis(advanceReferenceAnalysis(state)));
+  state = openReplacementTargetPicker(state, 'product', 'product-main');
+  state = chooseReplacementTarget(state, 'product-library');
+
+  let html = render(state);
+  assert.match(html, /data-review-count="conflict"[^>]*>冲突 1/);
+  assert.match(html, /data-action="clear-intent-target-product">沿用原商品/);
+  assert.match(html, /<button[^>]*disabled[^>]*>确认替换方案并开始复刻/);
+
+  state = clearIntentTargetProduct(state);
+  html = render(state);
+  const confirmButton = html.match(/<button[^>]*>确认替换方案并开始复刻<\/button>/)?.[0] || '';
+  assert.match(html, /data-review-count="conflict"[^>]*>冲突 0/);
+  assert.doesNotMatch(confirmButton, /disabled/);
+
+  state = confirmProductionPlan(state);
+  assert.equal(state.orders[state.activeOrderId].phase, 'running');
 });
 
 test('reopening configuration renders the first form and explicitly marks the old replacement plan invalid', () => {
