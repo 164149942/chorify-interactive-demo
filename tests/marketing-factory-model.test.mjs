@@ -640,6 +640,57 @@ test('composer plan changes keep one reversible snapshot and report affected row
   assert.equal(order.replacementPlan.review.lastChange, null);
 });
 
+test('composer product-mode changes create a reversible product-row change', () => {
+  let state = createPlanOrder();
+  const before = structuredClone(state.orders[state.activeOrderId]);
+
+  state = sendConversationMessage(state, '换商品');
+  let order = state.orders[state.activeOrderId];
+  const change = order.replacementPlan.review.lastChange;
+
+  assert.equal(order.intentDraft.quickMode, 'replace_product');
+  assert.deepEqual(order.replacementPlan.affectedGroups, ['product']);
+  assert.deepEqual(order.replacementPlan.affectedObjectIds, ['product-main']);
+  assert.equal(change.changes.find((item) => item.group === 'product')?.before.inheritReference, true);
+  assert.equal(change.changes.find((item) => item.group === 'product')?.after.inheritReference, false);
+  assert.equal(order.messages.at(-1).kind, 'plan-change');
+
+  state = undoLastPlanChange(state, change.undoToken);
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.intentDraft.quickMode, before.intentDraft.quickMode);
+  assert.equal(order.replacementPlan.product.inheritReference, before.replacementPlan.product.inheritReference);
+  assert.equal(order.replacementPlan.review.lastChange, null);
+});
+
+test('a later structured candidate-count choice invalidates an older composer undo', () => {
+  let state = createPlanOrder();
+  state = sendConversationMessage(state, '人物用 AI');
+  const staleToken = state.orders[state.activeOrderId].replacementPlan.review.lastChange.undoToken;
+
+  state = updateOrderDraft(state, { candidateCount: 5 });
+  let order = state.orders[state.activeOrderId];
+  assert.equal(order.draft.candidateCount, 5);
+  assert.equal(order.replacementPlan.review.lastChange, null);
+
+  state = undoLastPlanChange(state, staleToken);
+  order = state.orders[state.activeOrderId];
+  assert.equal(order.draft.candidateCount, 5);
+  assert.equal(order.intentDraft.candidateCount, 5);
+});
+
+test('confirming production clears the composer undo from live and submitted plans', () => {
+  let state = createPlanOrder();
+  state = sendConversationMessage(state, '人物用 AI');
+  assert.ok(state.orders[state.activeOrderId].replacementPlan.review.lastChange);
+
+  state = confirmProductionPlan(state);
+  const order = state.orders[state.activeOrderId];
+
+  assert.equal(order.phase, 'running');
+  assert.equal(order.replacementPlan.review.lastChange, null);
+  assert.equal(order.submittedReplacementPlan.review.lastChange, null);
+});
+
 test('a direct mapping decision clears stale composer highlights and undo state', () => {
   let state = createPlanOrder();
   state = sendConversationMessage(state, '投放巴西，人物用 AI');

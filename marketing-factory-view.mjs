@@ -123,8 +123,11 @@ function renderHomeComposer() {
 
 function renderMessage(message, activeUndoToken = '') {
   const user = message.role === 'user';
+  const changeSummary = message.planChangeSummary || (message.affectedGroups || [])
+    .map((group) => ({ product: '商品', localization: '本地化', person: '人物', scene: '场景', clip: '视频片段' }[group] || group))
+    .join('、');
   const planChange = message.kind === 'plan-change'
-    ? `<div class="plan-change-summary"><span><strong>本次修改</strong><small>${escapeHtml((message.affectedGroups || []).map((group) => ({ product: '商品', localization: '本地化', person: '人物', scene: '场景', clip: '视频片段' }[group] || group)).join('、'))}</small></span>${message.planChangeToken === activeUndoToken ? `<button type="button" data-action="undo-plan-change" data-undo-token="${escapeHtml(message.planChangeToken)}">撤销本次修改</button>` : '<em>历史修改</em>'}</div>`
+    ? `<div class="plan-change-summary"><span><strong>本次修改</strong><small>${escapeHtml(changeSummary)}</small></span>${message.planChangeToken === activeUndoToken ? `<button type="button" data-action="undo-plan-change" data-undo-token="${escapeHtml(message.planChangeToken)}">撤销本次修改</button>` : '<em>历史修改</em>'}</div>`
     : '';
   return `<article class="chat-message ${user ? 'is-user' : 'is-ai'}"><div class="message-avatar">${user ? 'DW' : 'AI'}</div><div class="message-bubble"><p>${escapeHtml(message.text)}</p>${planChange}${message.progress != null ? `<div class="inline-progress"><span style="width:${Number(message.progress)}%"></span></div><small>${Number(message.progress)}%</small>` : ''}</div></article>`;
 }

@@ -105,6 +105,32 @@ test('composer changes highlight affected comparison rows and expose a working u
   assert.doesNotMatch(html, /aria-label="候选视频任务"/);
 });
 
+test('composer product-mode changes highlight the product comparison row', () => {
+  let state = createPlanState();
+  state = updateOrderDraft(state, { replicationMode: 'same_product' });
+  state = sendConversationMessage(state, '换商品');
+  const html = render(state);
+
+  assert.match(html, /class="mapping-comparison-row[^"]*is-affected[^"]*" data-mapping-object-id="product-main"/);
+  assert.match(html, /本次修改[\s\S]*商品/);
+  assert.match(html, /data-action="undo-plan-change"/);
+});
+
+test('a candidate-count-only composer change names the new count in its change card', () => {
+  const html = render(sendConversationMessage(createPlanState(), '生成 5 条'));
+
+  assert.match(html, /本次修改[\s\S]*候选数量：5条/);
+  assert.match(html, /data-action="undo-plan-change"/);
+});
+
+test('confirmed production does not expose a stale composer undo action', () => {
+  let state = sendConversationMessage(createPlanState(), '人物用 AI');
+  state = confirmProductionPlan(state);
+  const html = render(state);
+
+  assert.doesNotMatch(html, /data-action="undo-plan-change"/);
+});
+
 test('only the newest valid plan change message exposes undo and undoing removes it', () => {
   let state = sendConversationMessage(createPlanState(), '人物用 AI');
   const firstToken = state.orders[state.activeOrderId].replacementPlan.review.lastChange.undoToken;

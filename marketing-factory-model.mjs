@@ -567,6 +567,7 @@ export function goHome(state) {
 export function updateOrderDraft(state, patch) {
   return updateActiveOrder(state, (order) => {
     if (!['intake', 'intent_review', 'plan'].includes(order.phase) && !order.editingConfiguration) return order;
+    if (order.phase === 'plan' || order.editingConfiguration) clearPlanReviewChange(order);
     order.draft = { ...order.draft, ...clone(patch) };
     if (Object.hasOwn(patch, 'replicationMode')) {
       order.draft.goals.product = patch.replicationMode === 'replace_product';
@@ -926,7 +927,7 @@ export function updatePlanFromNaturalLanguage(state, text) {
     const priorLastChange = clone(order.replacementPlan.review?.lastChange || null);
     const beforeObjects = clone(order.replacementPlan.objects || []);
     const candidateCountBefore = order.intentDraft.candidateCount;
-    const beforeValues = Object.fromEntries(['localization', 'person', 'scene', 'clip']
+    const beforeValues = Object.fromEntries(['product', 'localization', 'person', 'scene', 'clip']
       .map((group) => [group, clone(order.replacementPlan[group])]));
     const before = Object.fromEntries(Object.entries(beforeValues)
       .map(([group, value]) => [group, JSON.stringify(value)]));
@@ -953,9 +954,14 @@ export function updatePlanFromNaturalLanguage(state, text) {
     }
     applyPlanInheritance(order);
     refreshIntentGate(order);
-    order.replacementPlan.affectedGroups = ['localization', 'person', 'scene', 'clip']
+    order.replacementPlan.affectedGroups = ['product', 'localization', 'person', 'scene', 'clip']
       .filter((group) => before[group] !== JSON.stringify(order.replacementPlan[group]));
-    order.replacementPlan.affectedObjectIds = replacementObjectIdsChanged(beforeObjects, order.replacementPlan.objects);
+    order.replacementPlan.affectedObjectIds = [...new Set([
+      ...replacementObjectIdsChanged(beforeObjects, order.replacementPlan.objects),
+      ...order.replacementPlan.affectedGroups.flatMap((group) => (order.replacementPlan.objects || [])
+        .filter((object) => object.group === group)
+        .map((object) => object.id)),
+    ])];
     recomputeReplacementPlanBlockers(order);
     const candidateCountChanged = candidateCountBefore !== order.intentDraft.candidateCount;
     const changedLabels = [
@@ -1213,6 +1219,7 @@ export function confirmProductionPlan(state) {
     order.validationErrors = missing;
     if (missing.length) return order;
 
+    clearPlanReviewChange(order);
     order.phase = 'running';
     order.status = '正在创建候选视频';
     order.progress = 12;
@@ -1534,6 +1541,9 @@ export function sendConversationMessage(state, text) {
         planChangeToken: planChange.undoToken,
         affectedGroups: clone(planChange.affectedGroups),
         affectedObjectIds: clone(planChange.affectedObjectIds),
+        planChangeSummary: planChange.changes.map((change) => (
+          change.group === 'candidateCount' ? `候选数量：${change.after}条` : change.label
+        )).join('、'),
       } : {}),
     });
     return order;
